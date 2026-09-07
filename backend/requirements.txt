@@ -1,0 +1,3 @@
+pyjwt
+passlib[argon2]
+google-genai

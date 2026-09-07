@@ -1,0 +1,38 @@
+# Nginx Reverse Proxy Configuration Example
+
+server {
+    listen 80;
+    server_name YOUR_DOMAIN;
+
+    # Limit payload size for uploads (adjust if larger PDFs are expected, backend default is 10MB)
+    client_max_body_size 12M;
+
+    # Rate limiting zone example (needs to be defined in http block)
+    # limit_req zone=api burst=20 nodelay;
+
+    # API Backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:BACKEND_PORT; # Typically 8000
+        
+        # Security & Identity headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support (if applicable)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Frontend (Next.js)
+    location / {
+        proxy_pass http://127.0.0.1:FRONTEND_PORT; # Typically 3000
+        
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

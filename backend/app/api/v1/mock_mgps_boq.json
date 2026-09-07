@@ -1,0 +1,468 @@
+{
+  "title": "JU HOSPITAL, JAIPUR - MEDICAL GAS PIPELINE SYSTEM (MGPS)",
+  "tender_number": "JU-HOSP-MGPS-05",
+  "department": "Medical Gas",
+  "description": "Supply, installation, testing and commissioning of complete MGPS.",
+  "custom_columns": [],
+  "items": [
+    {
+      "item_code": "1.01",
+      "item_name": "Fully automatic manifold control panel for oxygen supply",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "1.02",
+      "item_name": "Cylinder manifold, 2x24 cylinder configuration",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "1.03",
+      "item_name": "Emergency reserve control panel regulator for oxygen system",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "1.04",
+      "item_name": "Cylinder manifold, 1x24 cylinder configuration",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "2.01",
+      "item_name": "Fully automatic manifold control panel for N2O supply",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "2.02",
+      "item_name": "Cylinder manifold, 2x16 cylinder configuration",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "2.03",
+      "item_name": "Emergency reserve control panel regulator for N2O system",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "2.04",
+      "item_name": "Cylinder manifold, 1x16 cylinder configuration",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "3.01",
+      "item_name": "Fully automatic manifold control panel for CO2 supply",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "3.02",
+      "item_name": "Cylinder manifold, 2x4 cylinder configuration",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "3.03",
+      "item_name": "Emergency reserve control panel regulator for CO2 system",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "3.04",
+      "item_name": "Cylinder manifold, 1x4 cylinder configuration",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "4.01",
+      "item_name": "Oil-Free type medical air compressors, pentaplex configuration",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "4.02",
+      "item_name": "Air receiver vessel, 3,000 litres",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "4.03",
+      "item_name": "Medical air purification unit, five-stage filtration",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "4.04",
+      "item_name": "Pressure reducing station with two outputs",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "5.01",
+      "item_name": "Medical vacuum pumps, pentaplex configuration",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "5.02",
+      "item_name": "Vacuum receiver vessel, 3,000 litres",
+      "specifications": "",
+      "quantity": 2,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "5.03",
+      "item_name": "Vacuum bacteria filters (3 nos.) and secretion traps",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "6.01",
+      "item_name": "Integrated electrical control panel for 5 air compressors and 5 vacuum pumps",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "7.01",
+      "item_name": "Area alarm and shut-off unit, 1 gas (O2) and 1 vacuum",
+      "specifications": "",
+      "quantity": 15,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "7.02",
+      "item_name": "Area alarm and shut-off unit, 2 gases (O2, Air 4) and 1 vacuum",
+      "specifications": "",
+      "quantity": 30,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "7.03",
+      "item_name": "Area alarm and shut-off unit, 3 gases (O2, Air 4, N2O) and 1 vacuum",
+      "specifications": "",
+      "quantity": 16,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "7.04",
+      "item_name": "Area alarm and shut-off unit, 4 gases (O2, Air 4, N2O, CO2) and 1 vacuum",
+      "specifications": "",
+      "quantity": 3,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "7.05",
+      "item_name": "Area alarm and shut-off unit, 5 gases",
+      "specifications": "",
+      "quantity": 23,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "8.01",
+      "item_name": "Terminal unit, Oxygen (O2)",
+      "specifications": "",
+      "quantity": 1058,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "8.02",
+      "item_name": "Terminal unit, Nitrous Oxide (N2O)",
+      "specifications": "",
+      "quantity": 38,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "8.03",
+      "item_name": "Terminal unit, Medical Air 4 bar",
+      "specifications": "",
+      "quantity": 375,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "8.04",
+      "item_name": "Terminal unit, Medical Air 7 bar",
+      "specifications": "",
+      "quantity": 26,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "8.05",
+      "item_name": "Terminal unit, Vacuum",
+      "specifications": "",
+      "quantity": 1058,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "8.06",
+      "item_name": "Terminal unit, Carbon Dioxide (CO2)",
+      "specifications": "",
+      "quantity": 23,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "9.01",
+      "item_name": "Master plant alarm panel",
+      "specifications": "",
+      "quantity": 1,
+      "uom": "Set",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "10.01",
+      "item_name": "Venturi-type anaesthetic gas scavenging system terminal unit",
+      "specifications": "",
+      "quantity": 28,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.01",
+      "item_name": "Ball valve, 15mm bore",
+      "specifications": "",
+      "quantity": 26,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.02",
+      "item_name": "Ball valve, 22mm bore",
+      "specifications": "",
+      "quantity": 29,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.03",
+      "item_name": "Ball valve, 28mm bore",
+      "specifications": "",
+      "quantity": 17,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.04",
+      "item_name": "Ball valve, 35mm bore",
+      "specifications": "",
+      "quantity": 14,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.05",
+      "item_name": "Ball valve, 42mm bore",
+      "specifications": "",
+      "quantity": 5,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.06",
+      "item_name": "Ball valve, 54mm bore",
+      "specifications": "",
+      "quantity": 5,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.07",
+      "item_name": "Ball valve, 76mm bore",
+      "specifications": "",
+      "quantity": 5,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "11.08",
+      "item_name": "Ball valve, 108mm bore",
+      "specifications": "",
+      "quantity": 6,
+      "uom": "Pcs",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "12.01",
+      "item_name": "Gas-specific indexed probes",
+      "specifications": "",
+      "quantity": 2578,
+      "uom": "Nos",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.01",
+      "item_name": "Copper pipe, 12mm OD x 0.7mm wall",
+      "specifications": "",
+      "quantity": 5914,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.02",
+      "item_name": "Copper pipe, 15mm OD x 0.9mm wall",
+      "specifications": "",
+      "quantity": 10263,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.03",
+      "item_name": "Copper pipe, 22mm OD x 0.9mm wall",
+      "specifications": "",
+      "quantity": 9430,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.04",
+      "item_name": "Copper pipe, 28mm OD x 0.9mm wall",
+      "specifications": "",
+      "quantity": 2136,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.05",
+      "item_name": "Copper pipe, 35mm OD x 1.2mm wall",
+      "specifications": "",
+      "quantity": 1083,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.06",
+      "item_name": "Copper pipe, 42mm OD x 1.5mm wall",
+      "specifications": "",
+      "quantity": 530,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.07",
+      "item_name": "Copper pipe, 54mm OD x 1.5mm wall",
+      "specifications": "",
+      "quantity": 521,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.08",
+      "item_name": "Copper pipe, 76mm OD x 1.5mm wall",
+      "specifications": "",
+      "quantity": 476,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    },
+    {
+      "item_code": "13.09",
+      "item_name": "Copper pipe, 108mm OD x 1.5mm wall",
+      "specifications": "",
+      "quantity": 654,
+      "uom": "Mtr",
+      "category": "Medical Gas Pipeline System",
+      "attributes": {}
+    }
+  ]
+}

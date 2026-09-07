@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+aiomysql
+alembic
+pydantic
+pydantic-settings
+python-multipart
+aiofiles
+pytest
+pytest-asyncio

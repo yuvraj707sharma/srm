@@ -1,0 +1,36 @@
+# Production Environment Configuration
+
+This file outlines the required environment variables for running the application in a production environment. 
+
+**WARNING: NEVER PUT REAL CREDENTIALS IN THIS FILE. THIS IS DOCUMENTATION ONLY.**
+
+```env
+# Deployment mode
+ENVIRONMENT=production
+
+# Database (MySQL must not be exposed publicly)
+DATABASE_URL=mysql+aiomysql://YOUR_DB_USER:YOUR_DB_PASSWORD@127.0.0.1:3306/YOUR_DB_NAME
+
+# Secrets (Must be long, cryptographically secure random strings)
+JWT_SECRET_KEY=YOUR_SECURE_JWT_SECRET
+SUBMISSION_SECRET_KEY=YOUR_SECURE_SUBMISSION_SECRET
+
+# AI Config (Never commit this!)
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+
+# Qdrant Vector Database
+QDRANT_URL=http://127.0.0.1:6333
+QDRANT_API_KEY=YOUR_QDRANT_API_KEY_IF_ANY
+QDRANT_COLLECTION=catalog_products
+QDRANT_TIMEOUT=30
+
+# Network & Security
+# Explicit origin required in production. No wildcards (*)
+CORS_ORIGINS=https://your-frontend-domain.com
+
+# Database Connection Pool Settings
+DB_POOL_SIZE=20
+DB_MAX_OVERFLOW=10
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
+```

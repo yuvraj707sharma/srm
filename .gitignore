@@ -1,0 +1,26 @@
+# Node dependencies & build
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Python Virtualenv & Cache
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Storage & Temporary Files
+backend/storage/*
+!backend/storage/.gitkeep
+.env
+backend/.env
+frontend/.env.local
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
