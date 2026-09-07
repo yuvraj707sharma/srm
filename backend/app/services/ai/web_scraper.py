@@ -21,9 +21,11 @@ class WebScraperService:
 
     def __init__(self):
         api_key = settings.GEMINI_API_KEY
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY is not configured.")
-        self._client = genai.Client(api_key=api_key)
+        if api_key:
+            self._client = genai.Client(api_key=api_key)
+        else:
+            self._client = None
+            logger.warning("GEMINI_API_KEY is not configured. Web scraper service will be disabled.")
         self._model_name = settings.GEMINI_MODEL
 
     async def search_external_vendors(self, query: str, country: str = None, state: str = None, city: str = None) -> List[Dict[str, Any]]:
@@ -31,6 +33,9 @@ class WebScraperService:
         Uses Google Search Grounding to find real external vendors, with optional location filters.
         Returns a list of vendor dicts with full contact details.
         """
+        if not self._client:
+            logger.warning("GEMINI_API_KEY is missing. Skipping live web discovery.")
+            return []
         location_clause = ""
         if country or state or city:
             locs = [l for l in (city, state, country) if l]

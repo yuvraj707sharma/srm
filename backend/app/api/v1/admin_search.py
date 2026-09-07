@@ -116,11 +116,13 @@ async def _semantic_search(
     Embed the query → search Qdrant → validate against MySQL → enrich with vendor info.
     The Qdrant point ID equals the draft UUID (set in embedding_runner).
     """
-    vector_service = QdrantVectorSearchService()
-    query_vector = await embedding_provider.generate_embedding(q)
-
-    # Fetch more than needed so we have room after threshold filtering
-    raw_hits = await vector_service.search_by_vector(query_vector, limit=50)
+    try:
+        vector_service = QdrantVectorSearchService()
+        query_vector = await embedding_provider.generate_embedding(q)
+        raw_hits = await vector_service.search_by_vector(query_vector, limit=50)
+    except Exception as e:
+        logger.warning("Semantic vector search unavailable: %s", e)
+        return []
 
     # Filter by score threshold
     hits = [h for h in raw_hits if h["score"] >= _SCORE_THRESHOLD]
