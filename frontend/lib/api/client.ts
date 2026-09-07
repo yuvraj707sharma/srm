@@ -14,7 +14,7 @@ export const fetchApi = async (url: string, options: RequestInit = {}) => {
   options.headers = headers;
   options.credentials = "include"; // For HttpOnly refresh cookie
 
-  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "/srm-api";
   const fullUrl = url.startsWith("http") ? url : `${BACKEND_URL}${url}`;
 
   let response = await fetch(fullUrl, options);

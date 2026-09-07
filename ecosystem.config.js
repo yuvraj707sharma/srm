@@ -20,7 +20,7 @@ module.exports = {
         PORT: 3007,
         NODE_ENV: "production",
         NEXT_PUBLIC_BASE_PATH: "/srm",
-        NEXT_PUBLIC_BACKEND_URL: "https://ai.jecrcuniversity.edu.in/srm-api"
+        NEXT_PUBLIC_BACKEND_URL: "/srm-api"
       }
     }
   ]
