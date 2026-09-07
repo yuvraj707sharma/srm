@@ -123,18 +123,29 @@ CRITICAL RULES:
             return []
 
     def _sync_call(self, prompt: str) -> str:
-        """Call Gemini with Google Search grounding. Must NOT set response_mime_type=json."""
-        response = self._client.models.generate_content(
-            model=self._model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                temperature=0.2,
-            ),
-        )
-        if not response.text or not response.text.strip():
-            raise Exception("Empty response from Gemini web search")
-        return response.text
+        """Call Gemini with Google Search grounding with automatic 503 spike retries."""
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = self._client.models.generate_content(
+                    model=self._model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[types.Tool(google_search=types.GoogleSearch())],
+                        temperature=0.2,
+                    ),
+                )
+                if not response.text or not response.text.strip():
+                    raise Exception("Empty response from Gemini web search")
+                return response.text
+            except Exception as e:
+                err_str = str(e)
+                if ("503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str) and attempt < max_retries - 1:
+                    logger.warning("Gemini 503 high demand spike on %s. Retrying attempt %d/%d in 2s...", self._model_name, attempt + 1, max_retries)
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    raise
 
     def _parse_response(self, text: str) -> List[Dict[str, Any]]:
         """Extract JSON array from Gemini plain-text response."""
