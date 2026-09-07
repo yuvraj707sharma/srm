@@ -3,9 +3,9 @@ module.exports = {
     {
       name: "srm-backend",
       cwd: "./backend",
-      script: "venv/bin/uvicorn",
+      script: "./venv/bin/uvicorn",
       args: "app.main:app --host 127.0.0.1 --port 8007 --workers 2",
-      interpreter: "python3",
+      interpreter: "none",
       env: {
         PORT: 8007,
         ENVIRONMENT: "production"
