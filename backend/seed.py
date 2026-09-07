@@ -72,18 +72,20 @@ async def seed():
         res = await db.execute(select(Role).options(selectinload(Role.permissions)).where(Role.name == "ADMIN"))
         admin_role = res.scalars().first()
         if not admin_role:
-            admin_role = Role(name="ADMIN", description="Administrator")
+            admin_role = Role(name="ADMIN", description="Administrator", permissions=list(perms_dict.values()))
             db.add(admin_role)
             await db.flush()
-        admin_role.permissions = list(perms_dict.values())
+        else:
+            admin_role.permissions = list(perms_dict.values())
 
         res = await db.execute(select(Role).options(selectinload(Role.permissions)).where(Role.name == "Procurement Admin"))
         proc_admin_role = res.scalars().first()
         if not proc_admin_role:
-            proc_admin_role = Role(name="Procurement Admin", description="Procurement Admin")
+            proc_admin_role = Role(name="Procurement Admin", description="Procurement Admin", permissions=list(perms_dict.values()))
             db.add(proc_admin_role)
             await db.flush()
-        proc_admin_role.permissions = list(perms_dict.values())
+        else:
+            proc_admin_role.permissions = list(perms_dict.values())
 
         # Check vendor org
         res = await db.execute(select(VendorOrganization).where(VendorOrganization.legal_name == "Vendor A Test"))
@@ -112,7 +114,8 @@ async def seed():
                 full_name="Vendor A",
                 is_active=True,
                 is_verified=True,
-                vendor_organization_id=vendor_a_org.id
+                vendor_organization_id=vendor_a_org.id,
+                roles=[vendor_role]
             )
             db.add(user)
             await db.flush()
@@ -121,9 +124,8 @@ async def seed():
             user.is_active = True
             user.is_verified = True
             user.vendor_organization_id = vendor_a_org.id
-
-        if vendor_role not in user.roles:
-            user.roles.append(vendor_role)
+            if vendor_role not in user.roles:
+                user.roles.append(vendor_role)
 
         # Admin User
         res = await db.execute(select(User).options(selectinload(User.roles)).where(User.email == "admin@test.com"))
@@ -135,7 +137,8 @@ async def seed():
                 full_name="System Admin",
                 is_active=True,
                 is_verified=True,
-                vendor_organization_id=None
+                vendor_organization_id=None,
+                roles=[admin_role, proc_admin_role]
             )
             db.add(admin_user)
             await db.flush()
@@ -143,10 +146,9 @@ async def seed():
             admin_user.password_hash = get_password_hash("password123")
             admin_user.is_active = True
             admin_user.is_verified = True
-
-        for r in [admin_role, proc_admin_role]:
-            if r not in admin_user.roles:
-                admin_user.roles.append(r)
+            for r in [admin_role, proc_admin_role]:
+                if r not in admin_user.roles:
+                    admin_user.roles.append(r)
 
         await db.commit()
         print("Successfully seeded users and permissions:")
