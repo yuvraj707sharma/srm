@@ -317,10 +317,10 @@ async def search_all(
         try:
             return await asyncio.wait_for(
                 scraper_service.search_external_vendors(q, country=country, state=state, city=city),
-                timeout=18.0
+                timeout=45.0
             )
         except asyncio.TimeoutError:
-            logger.warning("External web search timed out after 18s for query: %s", q)
+            logger.warning("External web search timed out after 45s for query: %s", q)
             return []
         except Exception as e:
             logger.error("External search error: %s", e, exc_info=True)
