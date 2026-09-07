@@ -48,11 +48,11 @@ export default function UnifiedAuthPage() {
         if (meRes.ok) {
           const me = await meRes.json();
           if (me.roles?.includes("ADMIN") || me.roles?.includes("SYSTEM_ADMIN")) {
-            window.location.href = "/admin";
+            window.location.href = "/srm/admin";
             return;
           }
         }
-        window.location.href = "/vendor/profile";
+        window.location.href = "/srm/vendor/profile";
       } else {
         try {
           const errData = await response.json();
@@ -107,7 +107,7 @@ export default function UnifiedAuthPage() {
           setSuccess("Account created! A 6-digit OTP code has been sent to your email.");
         } else if (data.access_token) {
           await login(data.access_token);
-          window.location.href = "/vendor/profile";
+          window.location.href = "/srm/vendor/profile";
         }
       } else {
         const errData = await response.json();
@@ -142,7 +142,7 @@ export default function UnifiedAuthPage() {
         await login(data.access_token);
         setSuccess("Email verified successfully! Redirecting to Vendor Profile...");
         setTimeout(() => {
-          window.location.href = "/vendor/profile";
+          window.location.href = "/srm/vendor/profile";
         }, 1000);
       } else {
         const errData = await response.json();

@@ -56,16 +56,16 @@ export default function OTPLoginPage() {
         if (meRes.ok) {
           const me = await meRes.json();
           if (me.roles?.includes("ADMIN") || me.roles?.includes("SYSTEM_ADMIN")) {
-            window.location.href = "/admin";
+            window.location.href = "/srm/admin";
             return;
           }
         }
         // Check if vendor org already exists
         const vendorRes = await fetchApi("/api/v1/vendor/me");
         if (vendorRes.ok) {
-          window.location.href = "/vendor/dashboard";
+          window.location.href = "/srm/vendor/dashboard";
         } else {
-          window.location.href = "/vendor/registration";
+          window.location.href = "/srm/vendor/registration";
         }
       } else {
         const errData = await response.json();
