@@ -123,7 +123,7 @@ CRITICAL RULES:
             return []
 
     def _sync_call(self, prompt: str) -> str:
-        """Call Gemini with Google Search grounding using gemini-3.7-flash and gemini-3.6-flash."""
+        """Call Gemini with Google Search grounding using gemini-3.7-flash and gemini-3.6-flash with retries."""
         import time
         models_to_try = [self._model_name, "gemini-3.7-flash", "gemini-3.6-flash"]
         unique_models = []
@@ -135,7 +135,7 @@ CRITICAL RULES:
 
         last_err = None
         for model_name in unique_models:
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
                     response = self._client.models.generate_content(
                         model=model_name,
@@ -149,10 +149,10 @@ CRITICAL RULES:
                         return response.text
                 except Exception as e:
                     err_str = str(e)
-                    logger.warning("Gemini search on '%s' failed (attempt %d/2): %s", model_name, attempt + 1, err_str)
+                    logger.warning("Gemini search on '%s' attempt %d/3 failed: %s", model_name, attempt + 1, err_str)
                     last_err = e
                     if "503" in err_str or "UNAVAILABLE" in err_str:
-                        time.sleep(1)
+                        time.sleep(2)
                         continue
                     break
 
