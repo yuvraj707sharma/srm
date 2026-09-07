@@ -40,7 +40,7 @@ class WebScraperService:
         if country or state or city:
             locs = [l for l in (city, state, country) if l]
             loc_str = ", ".join(locs)
-            location_clause = f"\nCRITICAL: You MUST ONLY return suppliers that are physically located or headquartered in: {loc_str}. Do NOT return suppliers outside of {loc_str}.\n"
+            location_clause = f"\nGEOGRAPHIC PREFERENCE: Prioritize manufacturers, OEMs, suppliers, and distributors located in or supplying/servicing: {loc_str}.\n"
         else:
             location_clause = "\nGEOGRAPHIC SCOPE: The scope is GLOBAL (Worldwide). Research and return legitimate manufacturers, suppliers, and OEMs across major industrial hubs worldwide.\n"
 
