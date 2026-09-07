@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 from google import genai
 from google.genai import types
 
