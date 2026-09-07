@@ -123,38 +123,36 @@ CRITICAL RULES:
             return []
 
     def _sync_call(self, prompt: str) -> str:
-        """Call Gemini with Google Search grounding using gemini-3.7-flash and gemini-3.6-flash with retries."""
+        """Call Gemini with Google Search grounding, immediately switching between 3.6 and 3.7 on 503 high demand."""
         import time
-        models_to_try = [self._model_name, "gemini-3.7-flash", "gemini-3.6-flash"]
+        models_to_try = [self._model_name, "gemini-3.6-flash", "gemini-3.7-flash"]
         unique_models = []
         for m in models_to_try:
             if m and m not in unique_models and ("3.7" in m or "3.6" in m):
                 unique_models.append(m)
         if not unique_models:
-            unique_models = ["gemini-3.7-flash", "gemini-3.6-flash"]
+            unique_models = ["gemini-3.6-flash", "gemini-3.7-flash"]
 
         last_err = None
         for model_name in unique_models:
-            for attempt in range(3):
-                try:
-                    response = self._client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            tools=[types.Tool(google_search=types.GoogleSearch())],
-                            temperature=0.2,
-                        ),
-                    )
-                    if response.text and response.text.strip():
-                        return response.text
-                except Exception as e:
-                    err_str = str(e)
-                    logger.warning("Gemini search on '%s' attempt %d/3 failed: %s", model_name, attempt + 1, err_str)
-                    last_err = e
-                    if "503" in err_str or "UNAVAILABLE" in err_str:
-                        time.sleep(2)
-                        continue
-                    break
+            try:
+                response = self._client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[types.Tool(google_search=types.GoogleSearch())],
+                        temperature=0.2,
+                    ),
+                )
+                if response.text and response.text.strip():
+                    return response.text
+            except Exception as e:
+                err_str = str(e)
+                logger.warning("Gemini search on '%s' failed: %s. Switching model immediately...", model_name, err_str)
+                last_err = e
+                if "503" in err_str or "UNAVAILABLE" in err_str:
+                    time.sleep(0.5)
+                    continue
 
         if last_err:
             raise last_err
