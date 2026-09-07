@@ -830,51 +830,83 @@ async def search_catalog(
     from app.services.vector.qdrant import QdrantVectorSearchService
     from app.models.extraction import CatalogProductDraft
     from sqlalchemy.future import select
-    
-    # 1. Generate query embedding
-    provider = GeminiEmbeddingProvider()
+    from sqlalchemy import or_, func
+    import json
+
+    results = []
     try:
+        provider = GeminiEmbeddingProvider()
         query_vector = await provider.generate_embedding(payload.query)
-    except Exception as e:
-        raise APIException("SERVICE_UNAVAILABLE", "Search service is currently unavailable.", 503)
-        
-    # 2. Qdrant tenant-filtered search
-    vector_service = QdrantVectorSearchService()
-    try:
+        vector_service = QdrantVectorSearchService()
         results = await vector_service.search_by_vector(
             query_vector=query_vector,
             limit=payload.limit,
             filter_metadata={"vendor_organization_id": org.id}
         )
     except Exception as e:
-        raise APIException("SERVICE_UNAVAILABLE", "Search service is currently unavailable.", 503)
+        results = []
+
+    if results:
+        draft_ids = [hit["id"] for hit in results]
+        stmt = select(CatalogProductDraft).where(
+            CatalogProductDraft.id.in_(draft_ids),
+            CatalogProductDraft.vendor_organization_id == org.id,
+            CatalogProductDraft.status == "APPROVED"
+        )
+        db_res = await db.execute(stmt)
+        db_drafts = {draft.id: draft for draft in db_res.scalars().all()}
         
-    if not results:
+        hit_map = {hit["id"]: hit["score"] for hit in results}
+        output = []
+        for draft_id in draft_ids:
+            draft = db_drafts.get(draft_id)
+            if draft:
+                output.append({
+                    "id": draft.id,
+                    "catalog_id": draft.catalog_id,
+                    "product_name": draft.product_name,
+                    "attributes": json.loads(draft.attributes_json) if draft.attributes_json else {},
+                    "score": hit_map.get(draft.id, 0.0)
+                })
+        return {"results": output}
+
+    # SQL Keyword Search Fallback
+    terms = [t.strip() for t in payload.query.split() if len(t.strip()) >= 2]
+    if not terms:
         return {"results": []}
-        
-    # 3. Fetch authoritative records from MySQL and validate
-    draft_ids = [hit["id"] for hit in results]
-    
+
+    conditions = []
+    for term in terms:
+        like = f"%{term}%"
+        conditions.append(
+            or_(
+                func.lower(CatalogProductDraft.product_name).like(func.lower(like)),
+                func.lower(CatalogProductDraft.attributes_json).like(func.lower(like)),
+            )
+        )
+
     stmt = select(CatalogProductDraft).where(
-        CatalogProductDraft.id.in_(draft_ids),
         CatalogProductDraft.vendor_organization_id == org.id,
-        CatalogProductDraft.status == "APPROVED"
-    )
+        CatalogProductDraft.status == "APPROVED",
+        *conditions
+    ).limit(payload.limit)
     db_res = await db.execute(stmt)
-    db_drafts = {draft.id: draft for draft in db_res.scalars().all()}
-    
-    # 4. Construct response, discarding any stale vectors
-    validated_results = []
-    for hit in results:
-        draft_id = hit["id"]
-        draft = db_drafts.get(draft_id)
-        if draft:
-            validated_results.append({
-                "id": draft.id,
-                "catalog_id": draft.catalog_id,
-                "product_name": draft.product_name,
-                "attributes": draft.attributes_json,
-                "score": hit["score"]
-            })
-            
-    return {"results": validated_results}
+    db_drafts = list(db_res.scalars().all())
+
+    output = []
+    for draft in db_drafts:
+        attrs = {}
+        if draft.attributes_json:
+            try:
+                attrs = json.loads(draft.attributes_json)
+            except Exception:
+                pass
+        output.append({
+            "id": draft.id,
+            "catalog_id": draft.catalog_id,
+            "product_name": draft.product_name,
+            "attributes": attrs,
+            "score": 0.8
+        })
+
+    return {"results": output}
