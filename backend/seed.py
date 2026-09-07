@@ -1,14 +1,56 @@
 import asyncio
-from app.db.session import AsyncSessionLocal
+import os
+import urllib.parse
+from app.core.config import settings
+from app.db.session import engine, AsyncSessionLocal
+from app.db.base import Base
+import app.models  # Ensure all models are imported so Base.metadata has them
 from app.models.user import User, Role, Permission
 from app.models.vendor import VendorOrganization
 from app.core.security import get_password_hash
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+import pymysql
+
+def init_database():
+    """
+    Ensures the MySQL database exists before SQLAlchemy attempts async connection.
+    """
+    parsed = urllib.parse.urlparse(settings.DATABASE_URL.replace("mysql+aiomysql://", "mysql://"))
+    user = parsed.username or "root"
+    password = urllib.parse.unquote(parsed.password or "")
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 3306
+    db_name = parsed.path.lstrip("/") or "jecrc_scm"
+
+    print(f"Connecting to MySQL server at {host}:{port} to ensure database '{db_name}' exists...")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        charset="utf8mb4"
+    )
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+        conn.commit()
+        print(f"Database '{db_name}' is ready.")
+    finally:
+        conn.close()
 
 async def seed():
+    # 1. Ensure database exists
+    init_database()
+
+    # 2. Create all tables automatically
+    print("Creating all tables in database...")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("Tables created successfully.")
+
+    # 3. Seed Permissions & Roles
     async with AsyncSessionLocal() as db:
-        # 1. Seed Permissions
         perm_names = ["users.read", "vendors.read", "vendors.read_all", "vendors.approve"]
         perms_dict = {}
         for pname in perm_names:
@@ -20,7 +62,6 @@ async def seed():
                 await db.flush()
             perms_dict[pname] = p
 
-        # 2. Seed Roles
         res = await db.execute(select(Role).options(selectinload(Role.permissions)).where(Role.name == "VENDOR"))
         vendor_role = res.scalars().first()
         if not vendor_role:
@@ -44,7 +85,7 @@ async def seed():
             await db.flush()
         proc_admin_role.permissions = list(perms_dict.values())
 
-        # 3. Check if vendor org exists
+        # Check vendor org
         res = await db.execute(select(VendorOrganization).where(VendorOrganization.legal_name == "Vendor A Test"))
         vendor_a_org = res.scalars().first()
         if not vendor_a_org:
@@ -61,7 +102,7 @@ async def seed():
             vendor_a_org.status = "APPROVED"
             vendor_a_org.verification_status = "VERIFIED"
 
-        # 4. Seed / Update Vendor User
+        # Vendor User
         res = await db.execute(select(User).options(selectinload(User.roles)).where(User.email == "vendor_a@test.com"))
         user = res.scalars().first()
         if not user:
@@ -84,7 +125,7 @@ async def seed():
         if vendor_role not in user.roles:
             user.roles.append(vendor_role)
 
-        # 5. Seed / Update Admin User
+        # Admin User
         res = await db.execute(select(User).options(selectinload(User.roles)).where(User.email == "admin@test.com"))
         admin_user = res.scalars().first()
         if not admin_user:
@@ -114,4 +155,3 @@ async def seed():
 
 if __name__ == "__main__":
     asyncio.run(seed())
-
