@@ -123,29 +123,42 @@ CRITICAL RULES:
             return []
 
     def _sync_call(self, prompt: str) -> str:
-        """Call Gemini with Google Search grounding with automatic 503 spike retries."""
+        """Call Gemini with Google Search grounding using gemini-3.7-flash and gemini-3.6-flash."""
         import time
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                response = self._client.models.generate_content(
-                    model=self._model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        tools=[types.Tool(google_search=types.GoogleSearch())],
-                        temperature=0.2,
-                    ),
-                )
-                if not response.text or not response.text.strip():
-                    raise Exception("Empty response from Gemini web search")
-                return response.text
-            except Exception as e:
-                err_str = str(e)
-                if ("503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str) and attempt < max_retries - 1:
-                    logger.warning("Gemini 503 high demand spike on %s. Retrying attempt %d/%d in 2s...", self._model_name, attempt + 1, max_retries)
-                    time.sleep(2 * (attempt + 1))
-                else:
-                    raise
+        models_to_try = [self._model_name, "gemini-3.7-flash", "gemini-3.6-flash"]
+        unique_models = []
+        for m in models_to_try:
+            if m and m not in unique_models and ("3.7" in m or "3.6" in m):
+                unique_models.append(m)
+        if not unique_models:
+            unique_models = ["gemini-3.7-flash", "gemini-3.6-flash"]
+
+        last_err = None
+        for model_name in unique_models:
+            for attempt in range(2):
+                try:
+                    response = self._client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            tools=[types.Tool(google_search=types.GoogleSearch())],
+                            temperature=0.2,
+                        ),
+                    )
+                    if response.text and response.text.strip():
+                        return response.text
+                except Exception as e:
+                    err_str = str(e)
+                    logger.warning("Gemini search on '%s' failed (attempt %d/2): %s", model_name, attempt + 1, err_str)
+                    last_err = e
+                    if "503" in err_str or "UNAVAILABLE" in err_str:
+                        time.sleep(1)
+                        continue
+                    break
+
+        if last_err:
+            raise last_err
+        raise Exception("Empty response from Gemini web search")
 
     def _parse_response(self, text: str) -> List[Dict[str, Any]]:
         """Extract JSON array from Gemini plain-text response."""
