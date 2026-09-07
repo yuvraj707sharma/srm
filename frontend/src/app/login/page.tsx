@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../../lib/auth/AuthContext";
 import { fetchApi } from "../../../lib/api/client";
 
 export default function UnifiedAuthPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   
   // Login State
@@ -48,11 +50,11 @@ export default function UnifiedAuthPage() {
         if (meRes.ok) {
           const me = await meRes.json();
           if (me.roles?.includes("ADMIN") || me.roles?.includes("SYSTEM_ADMIN")) {
-            window.location.href = "/srm/admin";
+            router.push("/admin");
             return;
           }
         }
-        window.location.href = "/srm/vendor/profile";
+        router.push("/vendor/profile");
       } else {
         try {
           const errData = await response.json();
@@ -107,7 +109,7 @@ export default function UnifiedAuthPage() {
           setSuccess("Account created! A 6-digit OTP code has been sent to your email.");
         } else if (data.access_token) {
           await login(data.access_token);
-          window.location.href = "/srm/vendor/profile";
+          router.push("/vendor/profile");
         }
       } else {
         const errData = await response.json();
@@ -142,7 +144,7 @@ export default function UnifiedAuthPage() {
         await login(data.access_token);
         setSuccess("Email verified successfully! Redirecting to Vendor Profile...");
         setTimeout(() => {
-          window.location.href = "/srm/vendor/profile";
+          router.push("/vendor/profile");
         }, 1000);
       } else {
         const errData = await response.json();

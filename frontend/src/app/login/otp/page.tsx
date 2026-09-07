@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../../../lib/auth/AuthContext";
 import { fetchApi } from "../../../../lib/api/client";
 import Link from "next/link";
 
 export default function OTPLoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"request" | "verify">("request");
@@ -56,16 +58,16 @@ export default function OTPLoginPage() {
         if (meRes.ok) {
           const me = await meRes.json();
           if (me.roles?.includes("ADMIN") || me.roles?.includes("SYSTEM_ADMIN")) {
-            window.location.href = "/srm/admin";
+            router.push("/admin");
             return;
           }
         }
         // Check if vendor org already exists
         const vendorRes = await fetchApi("/api/v1/vendor/me");
         if (vendorRes.ok) {
-          window.location.href = "/srm/vendor/dashboard";
+          router.push("/vendor/dashboard");
         } else {
-          window.location.href = "/srm/vendor/registration";
+          router.push("/vendor/registration");
         }
       } else {
         const errData = await response.json();
