@@ -317,10 +317,10 @@ async def search_all(
         try:
             return await asyncio.wait_for(
                 scraper_service.search_external_vendors(q, country=country, state=state, city=city),
-                timeout=75.0
+                timeout=35.0
             )
         except asyncio.TimeoutError:
-            logger.warning("External web search timed out after 75s for query: %s. Using smart fallback.", q)
+            logger.warning("External web search timed out after 35s for query: %s. Using smart fallback.", q)
             return scraper_service._generate_fallback_suppliers(q, city=city, country=country)
         except Exception as e:
             logger.error("External search error: %s. Using smart fallback.", e, exc_info=True)

@@ -398,7 +398,14 @@ export default function VendorSearchPage() {
       if (state.trim()) params.set("state", state.trim());
       if (city.trim()) params.set("city", city.trim());
       const res = await fetchApi(`/api/v1/admin/search?${params}`);
-      if (!res.ok) throw new Error("Search failed");
+      if (!res.ok) {
+        let errMsg = `Search failed (HTTP ${res.status})`;
+        try {
+          const errData = await res.json();
+          if (errData?.detail) errMsg = errData.detail;
+        } catch {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
       setVendors(data.external || []);
       setSearched(true);

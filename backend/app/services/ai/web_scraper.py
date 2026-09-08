@@ -26,7 +26,7 @@ class WebScraperService:
         else:
             self._client = None
             logger.warning("GEMINI_API_KEY is not configured. Web scraper service will be disabled.")
-        self._model_name = settings.GEMINI_MODEL
+        self._model_name = settings.GEMINI_MODEL or "gemini-3.7-flash"
 
     async def search_external_vendors(self, query: str, country: str = None, state: str = None, city: str = None) -> List[Dict[str, Any]]:
         """
@@ -134,13 +134,13 @@ CRITICAL RULES:
         try:
             response_text = await asyncio.wait_for(
                 loop.run_in_executor(None, self._sync_call, prompt),
-                timeout=70.0
+                timeout=30.0
             )
             results = self._parse_response(response_text)
             if results:
                 return results
         except asyncio.TimeoutError:
-            logger.warning("Live AI scraping timed out after 70s for '%s'. Falling back to smart supplier recommendations.", query)
+            logger.warning("Live AI scraping timed out after 30s for '%s'. Falling back to smart supplier recommendations.", query)
         except Exception as e:
             logger.error("Error scraping external vendors for '%s': %s", query, e)
         
@@ -148,46 +148,40 @@ CRITICAL RULES:
         return self._generate_fallback_suppliers(query, city=city, country=country)
 
     def _sync_call(self, prompt: str) -> str:
-        """Call Gemini for live dynamic web discovery of suppliers with Google Search Grounding."""
-        primary = self._model_name if self._model_name else "gemini-3.7-flash"
-        models_to_try = [primary]
-        for m in ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-flash-latest"]:
-            if m not in models_to_try:
-                models_to_try.append(m)
+        """Call Gemini for live dynamic web discovery of suppliers with Google Search Grounding using gemini-3.7-flash."""
+        model_name = self._model_name if self._model_name else "gemini-3.7-flash"
         
         # 1. Primary: Chat session with Google Search Grounding
-        for model_name in models_to_try:
-            try:
-                chat = self._client.chats.create(
-                    model=model_name,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
-                        tools=[types.Tool(google_search=types.GoogleSearch())]
-                    )
+        try:
+            chat = self._client.chats.create(
+                model=model_name,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    tools=[types.Tool(google_search=types.GoogleSearch())]
                 )
-                response = chat.send_message(prompt)
-                if response.text and response.text.strip():
-                    return response.text
-            except Exception as e:
-                logger.warning("Gemini grounded chat call failed on '%s': %s", model_name, e)
+            )
+            response = chat.send_message(prompt)
+            if response.text and response.text.strip():
+                return response.text
+        except Exception as e:
+            logger.warning("Gemini grounded search failed on '%s': %s", model_name, e)
 
-        # 2. Secondary: Direct JSON model call
-        for model_name in models_to_try:
-            try:
-                response = self._client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
-                        response_mime_type="application/json"
-                    ),
-                )
-                if response.text and response.text.strip():
-                    return response.text
-            except Exception as e:
-                logger.warning("Direct Gemini JSON call failed on '%s': %s", model_name, e)
+        # 2. Secondary: Direct JSON generation
+        try:
+            response = self._client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    response_mime_type="application/json"
+                ),
+            )
+            if response.text and response.text.strip():
+                return response.text
+        except Exception as e:
+            logger.warning("Direct Gemini JSON call failed on '%s': %s", model_name, e)
 
-        raise Exception("All Gemini model attempts failed")
+        raise Exception(f"Live Gemini search unavailable on {model_name}")
 
     def _generate_fallback_suppliers(self, query: str, city: str = None, country: str = None) -> List[Dict[str, Any]]:
         """Smart query-tailored fallback returning 20 verified suppliers when network API experiences high demand."""
