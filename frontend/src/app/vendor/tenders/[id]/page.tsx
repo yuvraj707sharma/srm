@@ -71,6 +71,7 @@ interface BidFormItem {
   make_model_quoted: string;
   technical_compliance: string;
   vendor_remarks: string;
+  gst_percent: number;
 }
 
 export default function VendorTenderBiddingPage() {
@@ -136,6 +137,7 @@ export default function VendorTenderBiddingPage() {
             make_model_quoted: "",
             technical_compliance: "COMPLIANT",
             vendor_remarks: "",
+            gst_percent: 18,
           };
         });
         setFormItems(initialForm);
@@ -161,13 +163,16 @@ export default function VendorTenderBiddingPage() {
   const calculateFormTotals = () => {
     if (!tender) return { subTotal: 0, gstAmount: 0, grandTotal: 0 };
     let sub = 0;
+    let gstTotal = 0;
     tender.items.forEach((it) => {
       const q = formItems[it.id];
       const rate = q ? Number(q.quoted_unit_price) || 0 : 0;
-      sub += rate * it.quantity;
+      const gstPct = q ? Number(q.gst_percent ?? 18) : 18;
+      const itemSub = rate * it.quantity;
+      sub += itemSub;
+      gstTotal += itemSub * (gstPct / 100);
     });
-    const gst = sub * 0.18;
-    return { subTotal: sub, gstAmount: gst, grandTotal: sub + gst };
+    return { subTotal: sub, gstAmount: gstTotal, grandTotal: sub + gstTotal };
   };
 
   const handleFormItemChange = (itemId: string, field: keyof BidFormItem, value: any) => {
@@ -192,6 +197,7 @@ export default function VendorTenderBiddingPage() {
         make_model_quoted: it.make_model_quoted || undefined,
         technical_compliance: it.technical_compliance || "COMPLIANT",
         vendor_remarks: it.vendor_remarks || undefined,
+        gst_percent: it.gst_percent ?? 18,
       }));
 
       const res = await fetchApi(`/api/v1/vendor/tenders/${boqId}/submit`, {
@@ -772,6 +778,7 @@ export default function VendorTenderBiddingPage() {
                         <th className="px-3 py-3 w-16 text-center">UOM</th>
                         <th className="px-3 py-3 min-w-[160px]">Quoted Make & Model</th>
                         <th className="px-3 py-3 w-32 text-right">Unit Rate (₹)</th>
+                        <th className="px-3 py-3 w-20 text-center">GST %</th>
                         <th className="px-3 py-3 w-32 text-right">Total (₹)</th>
                         <th className="px-3 py-3 w-32 text-center">Compliance</th>
                         <th className="px-3 py-3 min-w-[140px]">Remarks</th>
@@ -785,8 +792,11 @@ export default function VendorTenderBiddingPage() {
                           make_model_quoted: "",
                           technical_compliance: "COMPLIANT",
                           vendor_remarks: "",
+                          gst_percent: 18,
                         };
+                        const gstPct = Number(formVal.gst_percent ?? 18);
                         const total = (Number(formVal.quoted_unit_price) || 0) * it.quantity;
+                        const itemGst = total * (gstPct / 100);
 
                         return (
                           <tr key={it.id} className="hover:bg-slate-50/60">
@@ -842,9 +852,25 @@ export default function VendorTenderBiddingPage() {
                               />
                             </td>
 
+                            {/* GST % */}
+                            <td className="px-2 py-2">
+                              <select
+                                value={formVal.gst_percent ?? 18}
+                                onChange={(e) => handleFormItemChange(it.id, "gst_percent", Number(e.target.value))}
+                                className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-center"
+                              >
+                                <option value={0}>0%</option>
+                                <option value={5}>5%</option>
+                                <option value={12}>12%</option>
+                                <option value={18}>18%</option>
+                                <option value={28}>28%</option>
+                              </select>
+                            </td>
+
                             {/* Line Total */}
-                            <td className="px-3 py-3 text-right font-mono font-bold text-slate-900">
-                              ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            <td className="px-3 py-3 text-right">
+                              <div className="font-mono font-bold text-slate-900">₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5">+ ₹{itemGst.toLocaleString("en-IN", { minimumFractionDigits: 2 })} GST</div>
                             </td>
 
                             {/* Compliance */}
@@ -887,7 +913,7 @@ export default function VendorTenderBiddingPage() {
                         <span className="font-mono font-bold">₹{subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400">GST (18%): </span>
+                        <span className="text-slate-400">Total GST: </span>
                         <span className="font-mono font-bold">₹{gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                       </div>
                     </div>

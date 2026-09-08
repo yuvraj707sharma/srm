@@ -47,6 +47,7 @@ class BidItemPayload(BaseModel):
     make_model_quoted: Optional[str] = None
     technical_compliance: Optional[str] = "COMPLIANT"
     vendor_remarks: Optional[str] = None
+    gst_percent: Optional[float] = 18.0
 
 class BidSubmissionPayload(BaseModel):
     items: List[BidItemPayload]
@@ -339,11 +340,13 @@ async def submit_manual_bid(
             "total_amount": tot,
             "make_model_quoted": it.make_model_quoted,
             "technical_compliance": it.technical_compliance or "COMPLIANT",
-            "vendor_remarks": it.vendor_remarks
+            "vendor_remarks": it.vendor_remarks,
+            "gst_percent": it.gst_percent if it.gst_percent is not None else 18.0,
+            "gst_amount": tot * ((it.gst_percent if it.gst_percent is not None else 18.0) / 100.0)
         })
 
-    gst_pct = payload.gst_percent if payload.gst_percent is not None else 18.0
-    gst_amt = sub_total * (gst_pct / 100.0)
+    gst_amt = sum(item["gst_amount"] for item in sub_items)
+    gst_pct = 0.0 # Replaced by line-level GST, zeroing out global indicator
     grand_tot = sub_total + gst_amt
 
     # Create submission and lock it
@@ -381,7 +384,9 @@ async def submit_manual_bid(
             total_amount=si["total_amount"],
             make_model_quoted=si["make_model_quoted"],
             technical_compliance=si["technical_compliance"],
-            vendor_remarks=si["vendor_remarks"]
+            vendor_remarks=si["vendor_remarks"],
+            gst_percent=si["gst_percent"],
+            gst_amount=si["gst_amount"]
         )
         db.add(item_obj)
 

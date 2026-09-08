@@ -811,7 +811,8 @@ Return ONLY raw JSON (no markdown fences):
       "quoted_unit_price": number,
       "make_model_quoted": string or null,
       "technical_compliance": "COMPLIANT" or "DEVIATION" or "NON_COMPLIANT",
-      "vendor_remarks": string or null
+      "vendor_remarks": string or null,
+      "gst_percent": number or null
     }}
   ]
 }}
@@ -939,13 +940,16 @@ Return ONLY raw JSON (no markdown fences):
         if it:
             unit_price = float(it.get("quoted_unit_price") or 0.0)
             tot = unit_price * boq_item.quantity
+            gst_pct = float(it.get("gst_percent") if it.get("gst_percent") is not None else 18.0)
             parsed_items.append({
                 "boq_item_id": boq_item.id,
                 "quoted_unit_price": unit_price,
                 "total_amount": tot,
                 "make_model_quoted": it.get("make_model_quoted") or detected_model_no or "",
                 "technical_compliance": it.get("technical_compliance") or "COMPLIANT",
-                "vendor_remarks": it.get("vendor_remarks") or ""
+                "vendor_remarks": it.get("vendor_remarks") or "",
+                "gst_percent": gst_pct,
+                "gst_amount": tot * (gst_pct / 100.0)
             })
         else:
             parsed_items.append({
@@ -954,12 +958,14 @@ Return ONLY raw JSON (no markdown fences):
                 "total_amount": 0.0,
                 "make_model_quoted": detected_model_no or "",
                 "technical_compliance": "NON_COMPLIANT",
-                "vendor_remarks": "Not found in quotation"
+                "vendor_remarks": "Not found in quotation",
+                "gst_percent": 18.0,
+                "gst_amount": 0.0
             })
 
     sub_total = sum(i["total_amount"] for i in parsed_items)
-    gst_percent = 18.0
-    gst_amount = sub_total * (gst_percent / 100.0)
+    gst_percent = 0.0 # Replaced by line level GST
+    gst_amount = sum(i["gst_amount"] for i in parsed_items)
     grand_total = sub_total + gst_amount
 
     # Build rich commercial breakdown for COMMERCIAL type
@@ -1616,6 +1622,8 @@ async def get_submission_detail_data(db: AsyncSession, boq_id: str, submission_i
             "negotiated_unit_price": si.negotiated_unit_price,
             "total_amount": si.total_amount,
             "negotiated_total_amount": si.negotiated_total_amount,
+            "gst_percent": getattr(si, 'gst_percent', 18.0),
+            "gst_amount": getattr(si, 'gst_amount', 0.0),
             "make_model_quoted": si.make_model_quoted,
             "technical_compliance": si.technical_compliance,
             "vendor_remarks": si.vendor_remarks,
@@ -1839,13 +1847,13 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
     current_row += 1
 
     # Row: GST Extra
-    ws.cell(row=current_row, column=2, value="GST Extra (18%)").font = bold_data
+    ws.cell(row=current_row, column=2, value="Total GST (As per Line Items)").font = bold_data
     ws.cell(row=current_row, column=2).fill = summary_fill
     v_col = num_base + 1
     for v in vendors:
         ws.merge_cells(start_row=current_row, start_column=v_col, end_row=current_row, end_column=v_col + 2)
-        sub_col_letter = get_column_letter(v_col)
-        c = ws.cell(row=current_row, column=v_col, value=f"={sub_col_letter}{subtotal_row}*0.18")
+        gst_amt = v["submission_details"]["commercials"].get("gst_amount", 0.0)
+        c = ws.cell(row=current_row, column=v_col, value=gst_amt)
         c.font = bold_data
         c.number_format = "#,##0.00"
         c.alignment = Alignment(horizontal="right", vertical="center")

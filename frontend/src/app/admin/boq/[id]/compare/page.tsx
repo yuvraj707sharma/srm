@@ -740,10 +740,10 @@ export default function ComparativeStatementPage() {
                     ))}
                   </tr>
 
-                  {/* Recurring GST 18% Row */}
+                  {/* Recurring GST Row */}
                   <tr className="bg-slate-50 text-[11px] font-semibold">
                     <td colSpan={3} className="px-4 py-2 text-right uppercase text-slate-600">
-                      GST Extra (18%):
+                      Total GST (As per Line Items):
                     </td>
                     {data.vendors.map((v) => (
                       <Fragment key={v.submission_id}>
@@ -980,7 +980,7 @@ export default function ComparativeStatementPage() {
                   <span className="text-2xl font-black font-mono text-amber-950">
                     ₹{(l1Vendor?.effective_total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                   </span>
-                  <span className="text-[10px] text-slate-500 block">Includes 18% GST</span>
+                  <span className="text-[10px] text-slate-500 block">Includes GST</span>
                 </div>
               </div>
 
@@ -1031,7 +1031,7 @@ export default function ComparativeStatementPage() {
                   <span className="text-2xl font-black font-mono text-blue-950">
                     ₹{(t1Vendor?.effective_total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                   </span>
-                  <span className="text-[10px] text-slate-500 block">Includes 18% GST</span>
+                  <span className="text-[10px] text-slate-500 block">Includes GST</span>
                 </div>
               </div>
 
@@ -1336,7 +1336,7 @@ export default function ComparativeStatementPage() {
                 {/* GST Row */}
                 <tr className="bg-slate-50 font-semibold text-xs">
                   <td colSpan={4 + data.custom_columns.length} className="px-4 py-2.5 text-slate-600 uppercase tracking-wider text-right">
-                    GST (18%):
+                    Total GST:
                   </td>
                   {data.vendors.map((v) => (
                     <td key={v.submission_id} colSpan={3} className="px-4 py-2.5 text-right font-mono text-slate-600 border-l border-slate-200">

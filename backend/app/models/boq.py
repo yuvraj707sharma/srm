@@ -118,8 +118,13 @@ class BOQSubmissionItem(Base):
     negotiated_total_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     
     make_model_quoted: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    technical_compliance: Mapped[str] = mapped_column(String(32), default="COMPLIANT")  # COMPLIANT, DEVIATION, NON_COMPLIANT
+    technical_compliance: Mapped[str | None] = mapped_column(String(64), nullable=True) # COMPLIANT, NON_COMPLIANT, DEVIATION
     vendor_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    # New line-level GST fields
+    gst_percent: Mapped[float] = mapped_column(Float, default=18.0)
+    gst_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    
     attributes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
