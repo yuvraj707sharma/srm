@@ -143,6 +143,25 @@ export default function AdminBOQDetailPage() {
     }
   };
 
+  const handleDeleteSubmission = async (submissionId: string) => {
+    if (!confirm("Are you sure you want to permanently delete this vendor's submission?")) return;
+    try {
+      const res = await fetchApi(`/api/v1/admin/boq/${boqId}/submissions/${submissionId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        alert("Submission deleted successfully.");
+        loadDetail(); // Reload the list
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Failed to delete submission");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An unexpected error occurred.");
+    }
+  };
+
   const handleExtendDeadline = async () => {
     if (!boq) return;
     setSavingExtend(true);
@@ -450,6 +469,13 @@ export default function AdminBOQDetailPage() {
                   <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full border border-emerald-200">
                     {sub.status}
                   </span>
+                  <button
+                    onClick={() => handleDeleteSubmission(sub.id)}
+                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                    title="Delete Vendor Submission"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
             ))}

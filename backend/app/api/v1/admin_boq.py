@@ -846,5 +846,29 @@ async def delete_boq(
         
     await db.delete(boq)
     await db.commit()
-    
     return {"status": "success", "message": "BOQ deleted successfully."}
+
+@router.delete("/{boq_id}/submissions/{submission_id}")
+async def delete_boq_submission(
+    boq_id: str,
+    submission_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Delete a specific vendor submission on a BOQ."""
+    from app.models.boq import BOQSubmission
+    
+    stmt = select(BOQSubmission).where(
+        BOQSubmission.id == submission_id,
+        BOQSubmission.boq_id == boq_id
+    )
+    res = await db.execute(stmt)
+    submission = res.scalar_one_or_none()
+    
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+        
+    await db.delete(submission)
+    await db.commit()
+    
+    return {"status": "success", "message": "Vendor submission deleted successfully."}
