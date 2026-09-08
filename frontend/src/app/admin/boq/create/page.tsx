@@ -713,23 +713,94 @@ export default function CreateUniversalBOQPage() {
             </div>
           )}
 
-          {/* Metadata Section */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-5">
-            <div>
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                BOQ Classification *
-              </label>
-              <select
-                value={boqType}
-                onChange={(e: any) => setBoqType(e.target.value)}
-                className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
-              >
-                <option value="COMMERCIAL">Commercial (LMO / Gas / Consumables)</option>
-                <option value="TECHNICAL">Technical (Equipments / Labs)</option>
-                <option value="TECHNOCOMMERCIAL">Techno-Commercial (Dual QCBS)</option>
-              </select>
+          {/* BOQ TYPE SELECTOR — Always visible at top of Step 2 */}
+          <div className="bg-white p-5 rounded-2xl border-2 border-slate-200 shadow-xs">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <span>🏷️</span>
+                  <span>BOQ Tender Classification</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">This determines how vendor quotes are extracted and evaluated by AI</p>
+              </div>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Commercial */}
+              <button
+                type="button"
+                onClick={() => setBoqType("COMMERCIAL")}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  boqType === "COMMERCIAL"
+                    ? "border-amber-500 bg-amber-50 ring-2 ring-amber-400/20"
+                    : "border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/30"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">🧪</span>
+                  <span className={`text-xs font-black ${boqType === "COMMERCIAL" ? "text-amber-800" : "text-slate-700"}`}>
+                    Commercial
+                  </span>
+                  {boqType === "COMMERCIAL" && (
+                    <span className="ml-auto text-[10px] font-extrabold bg-amber-500 text-white px-2 py-0.5 rounded-full">✓ Selected</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  LMO, gas supply, recurring consumables — extracts gas rate, monthly charges, SITC fees
+                </p>
+              </button>
 
+              {/* Technical */}
+              <button
+                type="button"
+                onClick={() => setBoqType("TECHNICAL")}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  boqType === "TECHNICAL"
+                    ? "border-blue-500 bg-blue-50 ring-2 ring-blue-400/20"
+                    : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">⚙️</span>
+                  <span className={`text-xs font-black ${boqType === "TECHNICAL" ? "text-blue-800" : "text-slate-700"}`}>
+                    Technical
+                  </span>
+                  {boqType === "TECHNICAL" && (
+                    <span className="ml-auto text-[10px] font-extrabold bg-blue-500 text-white px-2 py-0.5 rounded-full">✓ Selected</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Equipment, lab gear, hospital machinery — deep AI spec audit and compliance check
+                </p>
+              </button>
+
+              {/* Techno-Commercial */}
+              <button
+                type="button"
+                onClick={() => setBoqType("TECHNOCOMMERCIAL")}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  boqType === "TECHNOCOMMERCIAL"
+                    ? "border-purple-500 bg-purple-50 ring-2 ring-purple-400/20"
+                    : "border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50/30"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">⚖️</span>
+                  <span className={`text-xs font-black ${boqType === "TECHNOCOMMERCIAL" ? "text-purple-800" : "text-slate-700"}`}>
+                    Techno-Commercial
+                  </span>
+                  {boqType === "TECHNOCOMMERCIAL" && (
+                    <span className="ml-auto text-[10px] font-extrabold bg-purple-500 text-white px-2 py-0.5 rounded-full">✓ Selected</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Dual-envelope QCBS — full tech spec scoring + commercial pricing matrix side-by-side
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Metadata Section */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-5">
             <div>
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
                 Tender Title *
@@ -782,6 +853,7 @@ export default function CreateUniversalBOQPage() {
               />
             </div>
           </div>
+
 
           {/* Dynamic Custom Columns Management */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-xs">
