@@ -7,8 +7,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: '/api/oem/:path*',
-        destination: 'http://localhost:3001/api/:path*',
+        source: '/srm-api/:path*',
+        destination: 'http://127.0.0.1:8007/:path*',
       },
     ];
   },

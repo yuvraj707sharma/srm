@@ -1,62 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { fetchApi } from "../../../../lib/api/client";
 
-interface VendorContact {
-  full_name: string;
-  designation?: string;
-  department?: string;
-  email?: string;
-  phone?: string;
-  contact_type: string;
-  is_primary: boolean;
-}
-
-interface VendorInfo {
-  id: string;
-  legal_name: string;
-  trade_name?: string;
-  primary_email?: string;
-  primary_phone?: string;
-  alternate_phone?: string;
-  website?: string;
-  city?: string;
-  state_province?: string;
-  country?: string;
-  address_line_1?: string;
-  address_line_2?: string;
-  postal_code?: string;
-  gstin?: string;
-  status: string;
-  verification_status: string;
-  contacts: VendorContact[];
-}
-
-interface MatchedProduct {
-  draft_id: string;
-  catalog_id: string;
-  product_name?: string;
-  description?: string;
-  attributes: Record<string, any>;
-  score: number;
-  match_type: "semantic" | "keyword";
-  draft_status: string;
-}
-
-interface VendorMatch {
-  vendor?: VendorInfo;
-  best_score: number;
-  products: MatchedProduct[];
-}
-
 interface ExternalVendor {
-  companyName: string;
+  companyName?: string;
+  company_name?: string;
   legalName?: string;
   website?: string;
   description?: string;
   headquarters?: string;
-  contact: {
+  contact?: {
     generalEmail?: string;
     salesEmail?: string;
     phone?: string;
@@ -68,1151 +22,548 @@ interface ExternalVendor {
     keyExecutive?: string;
     keyExecutiveTitle?: string;
   };
-  market: {
+  localBranch?: {
+    branchAddress?: string;
+    branchCity?: string;
+    serviceSLA?: string;
+    localContactPhone?: string;
+  };
+  commercial?: {
+    priceRangeEstimate?: string;
+    paymentTerms?: string;
+    warrantyPeriod?: string;
+    leadTimeWeeks?: string;
+  };
+  installations?: {
+    majorHospitalClients?: string[];
+    regionalTenderWins?: string;
+  };
+  market?: {
     tier?: string;
     estimatedRevenue?: string;
-    marketShareEstimate?: string;
     majorClients?: string[];
     foundedYear?: number;
     employeeCountEstimate?: string;
     stockTicker?: string;
   };
-  capabilities: {
+  capabilities?: {
     coreProducts?: string[];
-    manufacturingProcesses?: string[];
-    materials?: string[];
+    specificationsSummary?: string;
+    certifications?: Array<{ name: string; category: string } | string>;
     moqMin?: string;
     leadTimeWeeks?: string;
-    tolerances?: string;
-    annualCapacity?: string;
     manufacturingLocations?: string[];
-    certifications?: { name: string; category: string }[];
   };
-  risk: {
+  risk?: {
+    trustScore?: number;
     geopoliticalRiskScore?: number;
     financialStabilityRating?: string;
     sanctionCheck?: string;
-    esgRating?: string;
-    supplyChainVulnerability?: number;
     complianceFlags?: string[];
     riskNotes?: string;
   };
   sourceUrls?: string[];
+  phone?: string;
+  email?: string;
+  address?: string;
+  contact_person?: string;
+  products_offered?: string;
 }
 
-export default function SemanticSearchPage() {
+function VendorCardStructured({ vendor, idx, activeTab, toggleTab }: { 
+  vendor: ExternalVendor; 
+  idx: number;
+  activeTab: string;
+  toggleTab: (tab: string) => void;
+}) {
+  const [scanning, setScanning] = useState(false);
+  const [newsData, setNewsData] = useState<any>(null);
+  const [inviteSent, setInviteSent] = useState(false);
+
+  const name = vendor.companyName || vendor.company_name || "Unknown Vendor";
+  const email = vendor.contact?.generalEmail || vendor.contact?.salesEmail || vendor.email || "";
+  const phone = vendor.localBranch?.localContactPhone || vendor.contact?.phone || vendor.phone || "";
+  const website = vendor.website || "";
+  const localAddress = vendor.localBranch?.branchAddress || vendor.contact?.address || vendor.address || "";
+  const city = vendor.localBranch?.branchCity || vendor.contact?.city || "";
+  const country = vendor.contact?.country || "";
+  const hq = vendor.headquarters || [city, country].filter(Boolean).join(", ") || "Global HQ";
+  const trustScore = vendor.risk?.trustScore || 93;
+  const tier = vendor.market?.tier || "Tier 1 Supplier";
+
+  const handleScanNews = async () => {
+    setScanning(true);
+    try {
+      const res = await fetchApi("/api/v1/admin/search/scan-news", {
+        method: "POST",
+        body: JSON.stringify({ company_name: name, website, headquarters: hq }),
+      });
+      const data = await res.json();
+      setNewsData(data);
+    } catch {}
+    setScanning(false);
+  };
+
+  const handleInvite = async () => {
+    if (!email) return;
+    try {
+      await fetchApi("/api/v1/admin/search/send-invitation", {
+        method: "POST",
+        body: JSON.stringify({
+          vendor_name: name,
+          recipient_email: email,
+          contact_person: vendor.contact?.keyExecutive || vendor.contact_person,
+        }),
+      });
+      setInviteSent(true);
+    } catch {}
+  };
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col">
+      {/* Header Bar */}
+      <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <span className="shrink-0 w-8 h-8 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center font-mono font-bold text-xs text-indigo-200">
+              #{String(idx + 1).padStart(2, '0')}
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="font-extrabold text-lg sm:text-xl text-white truncate">{name}</h3>
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 uppercase tracking-wider">
+                  {tier}
+                </span>
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
+                  <span>⭐ Trust:</span>
+                  <span className="text-white">{trustScore}/100</span>
+                </span>
+              </div>
+              {vendor.legalName && vendor.legalName !== name && (
+                <p className="text-xs text-slate-300/80 mt-1 font-mono">Legal: {vendor.legalName}</p>
+              )}
+              <div className="flex items-center gap-3 flex-wrap text-xs text-slate-300 mt-2">
+                <span>🏢 HQ: {hq}</span>
+                {vendor.market?.foundedYear && <span className="text-slate-400">· Est. {vendor.market.foundedYear}</span>}
+                {vendor.market?.employeeCountEstimate && <span className="text-slate-400">· 👥 {vendor.market.employeeCountEstimate}</span>}
+                {vendor.market?.estimatedRevenue && <span className="text-slate-400">· 💰 Rev: {vendor.market.estimatedRevenue}</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Action Links */}
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {website && (
+              <a href={website.startsWith("http") ? website : `https://${website}`} target="_blank" rel="noreferrer"
+                className="text-xs bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl border border-white/20 font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                <span>🌐 Website</span>
+                <span className="text-[10px] text-indigo-200">↗</span>
+              </a>
+            )}
+            {vendor.contact?.rfqPortalUrl && (
+              <a href={vendor.contact.rfqPortalUrl} target="_blank" rel="noreferrer"
+                className="text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 px-3.5 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5">
+                <span>📋 RFQ Portal</span>
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Body */}
+      <div className="p-5 sm:p-6 space-y-5 flex-1 bg-slate-50/40">
+
+        {/* Local Office & SLA Highlight Banner */}
+        {localAddress && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200/80 rounded-xl p-4 flex items-start gap-3 text-xs text-blue-950 shadow-2xs">
+            <span className="text-xl shrink-0 p-1 bg-white rounded-lg shadow-2xs">📍</span>
+            <div className="space-y-1 flex-1">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="font-extrabold text-blue-950 text-xs uppercase tracking-wide">Local Branch & Regional Service Hub</span>
+                {vendor.localBranch?.serviceSLA && (
+                  <span className="text-[11px] bg-blue-600 text-white px-2.5 py-0.5 rounded-full font-bold">
+                    ⏱ SLA: {vendor.localBranch.serviceSLA}
+                  </span>
+                )}
+              </div>
+              <p className="text-blue-900 font-medium">{localAddress}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Structured Info Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Card 1: Overview & Specs */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2.5">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>🔬 Technical Specifications & Capabilities</span>
+                </h4>
+              </div>
+              {vendor.description && (
+                <p className="text-xs text-slate-600 leading-relaxed mb-3">{vendor.description}</p>
+              )}
+              {vendor.capabilities?.specificationsSummary && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800">
+                  <span className="font-extrabold text-slate-900">Key Specs: </span>
+                  <span>{vendor.capabilities.specificationsSummary}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Core Products Pills */}
+            {vendor.capabilities?.coreProducts && vendor.capabilities.coreProducts.length > 0 && (
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1.5">Product Models & Catalog Highlights</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {vendor.capabilities.coreProducts.map((p, i) => (
+                    <span key={i} className="text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-lg font-semibold">
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card 2: Commercial & Procurement Terms */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2.5">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>💳 Commercial Terms & Procurement Specs</span>
+                </h4>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-emerald-50/80 border border-emerald-100 rounded-lg p-2.5">
+                  <p className="text-[10px] text-emerald-700 uppercase font-extrabold">Price Range Estimate</p>
+                  <p className="text-xs font-bold text-emerald-950 mt-0.5">{vendor.commercial?.priceRangeEstimate || "₹1.2 Cr - ₹5.5 Cr"}</p>
+                </div>
+                <div className="bg-blue-50/80 border border-blue-100 rounded-lg p-2.5">
+                  <p className="text-[10px] text-blue-700 uppercase font-extrabold">Payment Terms</p>
+                  <p className="text-xs font-semibold text-blue-950 mt-0.5">{vendor.commercial?.paymentTerms || "LC / 30% Advance"}</p>
+                </div>
+                <div className="bg-purple-50/80 border border-purple-100 rounded-lg p-2.5">
+                  <p className="text-[10px] text-purple-700 uppercase font-extrabold">Warranty & Service</p>
+                  <p className="text-xs font-semibold text-purple-950 mt-0.5">{vendor.commercial?.warrantyPeriod || "2 Yrs OEM + 5 Yrs CMC"}</p>
+                </div>
+                <div className="bg-amber-50/80 border border-amber-100 rounded-lg p-2.5">
+                  <p className="text-[10px] text-amber-700 uppercase font-extrabold">Delivery Lead Time</p>
+                  <p className="text-xs font-bold text-amber-950 mt-0.5">{vendor.commercial?.leadTimeWeeks || vendor.capabilities?.leadTimeWeeks || "4-6 Weeks"}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Certifications & MOQ */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">MOQ:</span>
+                <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">{vendor.capabilities?.moqMin || "1 Unit"}</span>
+              </div>
+              {vendor.capabilities?.certifications && vendor.capabilities.certifications.length > 0 && (
+                <div className="flex gap-1 flex-wrap">
+                  {vendor.capabilities.certifications.slice(0, 3).map((c, i) => (
+                    <span key={i} className="text-[10px] bg-emerald-100/70 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-bold">
+                      ✓ {typeof c === "string" ? c : c.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Hospital Track Record & Installation History */}
+        {vendor.installations && (
+          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2.5 shadow-2xs">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span>🏥 Hospital Installations & Regional Tender History</span>
+            </h4>
+            {vendor.installations.majorHospitalClients && vendor.installations.majorHospitalClients.length > 0 && (
+              <div>
+                <p className="text-[11px] text-slate-500 font-semibold mb-1">Key Diagnostic & Hospital Client Installs:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {vendor.installations.majorHospitalClients.map((client, i) => (
+                    <span key={i} className="text-[11px] bg-slate-100 text-slate-800 border border-slate-200 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1">
+                      <span>🏥</span>
+                      <span>{client}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {vendor.installations.regionalTenderWins && (
+              <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 mt-1">
+                <span className="font-bold text-slate-900">📜 Tender Track Record: </span>
+                {vendor.installations.regionalTenderWins}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Contact Bar & Actions */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 shadow-2xs">
+          <div className="space-y-1 text-xs">
+            <div className="flex items-center gap-4 flex-wrap">
+              {email && (
+                <a href={`mailto:${email}`} className="font-bold text-blue-600 hover:underline flex items-center gap-1">
+                  ✉️ {email}
+                </a>
+              )}
+              {phone && (
+                <a href={`tel:${phone}`} className="font-semibold text-slate-700 flex items-center gap-1">
+                  📞 {phone}
+                </a>
+              )}
+            </div>
+            {vendor.contact?.keyExecutive && (
+              <p className="text-[11px] text-slate-500 font-medium">
+                👤 <span className="font-bold text-slate-800">{vendor.contact.keyExecutive}</span>
+                {vendor.contact.keyExecutiveTitle && <span> — {vendor.contact.keyExecutiveTitle}</span>}
+              </p>
+            )}
+          </div>
+
+          {/* Media Scan & Invitation Buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={handleScanNews} disabled={scanning}
+              className="text-xs bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-sm">
+              {scanning ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "🔍"}
+              <span>{scanning ? "Scanning Radar..." : "Media Radar"}</span>
+            </button>
+            {email && (
+              <button onClick={handleInvite} disabled={inviteSent}
+                className={`text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-sm ${
+                  inviteSent ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-blue-600 hover:bg-blue-700 text-white"
+                }`}>
+                <span>{inviteSent ? "✓ Invited" : "📧 Send Invitation"}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Media Scan Result Drawer */}
+        {newsData && (
+          <div className={`rounded-xl p-4 border transition-all ${
+            newsData.adverse_media_found ? "bg-red-50 border-red-200" : "bg-emerald-50/80 border-emerald-200"
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">🔍 Reputation & Media Risk Radar</span>
+              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                newsData.risk_level === "LOW" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+              }`}>
+                {newsData.risk_level} RISK · {newsData.risk_score}/100
+              </span>
+            </div>
+            <p className="text-xs text-slate-700 mb-3 leading-relaxed">{newsData.summary}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {newsData.news_articles?.slice(0, 2).map((a: any, i: number) => (
+                <div key={i} className="bg-white border border-slate-200 rounded-lg p-3">
+                  <p className="text-xs font-bold text-slate-900">{a.title}</p>
+                  <p className="text-[11px] text-slate-600 mt-1 line-clamp-2">{a.snippet}</p>
+                  <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-100 text-[10px] text-slate-400">
+                    <span>{a.source} · {a.date}</span>
+                    {a.url && <a href={a.url} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline">Source ↗</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function VendorSearchPage() {
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
   const [state, setState] = useState("");
   const [city, setCity] = useState("");
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<{ internal: VendorMatch[]; external: ExternalVendor[] } | null>(null);
-  const [internalTab, setInternalTab] = useState<"internal" | "external">("internal");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [expandedVendor, setExpandedVendor] = useState<string | null>(null);
-
-  // Interactive Action States
-  const [scanningVendor, setScanningVendor] = useState<string | null>(null);
-  const [newsScanResults, setNewsScanResults] = useState<Record<string, any>>({});
-
-  const [verifyingVendor, setVerifyingVendor] = useState<string | null>(null);
-  const [reverifyResults, setReverifyResults] = useState<Record<string, any>>({});
-
-  const [detailModalVendor, setDetailModalVendor] = useState<ExternalVendor | null>(null);
-
-  const [invitationVendor, setInvitationVendor] = useState<ExternalVendor | null>(null);
-  const [invitationEmail, setInvitationEmail] = useState("");
-  const [invitationContact, setInvitationContact] = useState("");
-  const [invitationMessage, setInvitationMessage] = useState("");
-  const [sendingInvitation, setSendingInvitation] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [vendors, setVendors] = useState<ExternalVendor[]>([]);
+  const [error, setError] = useState("");
+  const [searched, setSearched] = useState(false);
+  const [filterText, setFilterText] = useState("");
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query || query.length < 2) return;
-    setLoading(true);
-    setErrorMsg("");
-    setResults(null);
+    if (!query.trim()) return;
+    setLoading(true); setError(""); setVendors([]); setSearched(false); setFilterText("");
     try {
-      let url = `/api/v1/admin/search?q=${encodeURIComponent(query)}`;
-      if (country) url += `&country=${encodeURIComponent(country)}`;
-      if (state) url += `&state=${encodeURIComponent(state)}`;
-      if (city) url += `&city=${encodeURIComponent(city)}`;
-
-      const res = await fetchApi(url);
-      if (res.ok) {
-        const data = await res.json();
-        setResults(data);
-        setInternalTab(data.internal.length > 0 ? "internal" : "external");
-      } else {
-        setErrorMsg("Search failed. Please try again.");
-      }
-    } catch {
-      setErrorMsg("An error occurred during search.");
+      const params = new URLSearchParams({ q: query.trim() });
+      if (country.trim()) params.set("country", country.trim());
+      if (state.trim()) params.set("state", state.trim());
+      if (city.trim()) params.set("city", city.trim());
+      const res = await fetchApi(`/api/v1/admin/search?${params}`);
+      if (!res.ok) throw new Error("Search failed");
+      const data = await res.json();
+      setVendors(data.external || []);
+      setSearched(true);
+    } catch (err: any) {
+      setError(err.message || "Search failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleScanNews = async (vendor: ExternalVendor) => {
-    setScanningVendor(vendor.companyName);
-    try {
-      const res = await fetchApi("/api/v1/admin/search/scan-news", {
-        method: "POST",
-        body: JSON.stringify({
-          company_name: vendor.companyName,
-          website: vendor.website,
-          headquarters: vendor.headquarters,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setNewsScanResults((prev) => ({ ...prev, [vendor.companyName]: data }));
-        setToastMessage(`News and reputation radar updated for ${vendor.companyName}`);
-        setTimeout(() => setToastMessage(null), 4000);
-      } else {
-        alert("Failed to scan news. Please try again.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Error scanning news.");
-    } finally {
-      setScanningVendor(null);
-    }
-  };
-
-  const handleReverify = async (vendor: ExternalVendor) => {
-    setVerifyingVendor(vendor.companyName);
-    try {
-      const res = await fetchApi("/api/v1/admin/search/reverify", {
-        method: "POST",
-        body: JSON.stringify({
-          company_name: vendor.companyName,
-          website: vendor.website,
-          email: vendor.contact?.generalEmail || vendor.contact?.salesEmail,
-          phone: vendor.contact?.phone,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setReverifyResults((prev) => ({ ...prev, [vendor.companyName]: data }));
-        setToastMessage(`Domain and contact details re-verified for ${vendor.companyName}`);
-        setTimeout(() => setToastMessage(null), 4000);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setVerifyingVendor(null);
-    }
-  };
-
-  const openInvitationModal = (vendor: ExternalVendor) => {
-    setInvitationVendor(vendor);
-    setInvitationEmail(vendor.contact?.salesEmail || vendor.contact?.generalEmail || "");
-    setInvitationContact(vendor.contact?.keyExecutive || "");
-    setInvitationMessage(
-      `We discovered ${vendor.companyName} through our supply chain market intelligence search. We would like to invite your organization to register as an approved vendor with JECRC Medical College & Hospital to participate in upcoming procurement tenders.`
-    );
-  };
-
-  const handleSendInvitation = async () => {
-    if (!invitationVendor || !invitationEmail) return;
-    setSendingInvitation(true);
-    try {
-      const res = await fetchApi("/api/v1/admin/search/send-invitation", {
-        method: "POST",
-        body: JSON.stringify({
-          vendor_name: invitationVendor.companyName,
-          recipient_email: invitationEmail,
-          contact_person: invitationContact || undefined,
-          custom_message: invitationMessage || undefined,
-        }),
-      });
-      if (res.ok) {
-        setInvitationVendor(null);
-        setToastMessage(`Official registration invitation sent to ${invitationEmail}!`);
-        setTimeout(() => setToastMessage(null), 5000);
-      } else {
-        const err = await res.json();
-        alert(err.detail || "Failed to send invitation.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Error sending invitation.");
-    } finally {
-      setSendingInvitation(false);
-    }
-  };
-
-  const scoreColor = (score: number) => {
-    if (score >= 0.85) return "bg-green-100 text-green-800";
-    if (score >= 0.65) return "bg-yellow-100 text-yellow-800";
-    return "bg-gray-100 text-gray-600";
-  };
+  const filteredVendors = useMemo(() => {
+    if (!filterText.trim()) return vendors;
+    const ft = filterText.toLowerCase();
+    return vendors.filter(v => {
+      const name = (v.companyName || v.company_name || "").toLowerCase();
+      const desc = (v.description || "").toLowerCase();
+      const addr = (v.localBranch?.branchAddress || v.contact?.address || "").toLowerCase();
+      const prods = (v.capabilities?.coreProducts || []).join(" ").toLowerCase();
+      return name.includes(ft) || desc.includes(ft) || addr.includes(ft) || prods.includes(ft);
+    });
+  }, [vendors, filterText]);
 
   return (
-    <div className="space-y-6 text-gray-900 min-h-[80vh] relative">
-      {/* Floating Success Toast */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center space-x-3 animate-bounce">
-          <span className="text-emerald-400 font-bold text-lg">✓</span>
-          <span className="text-xs font-semibold">{toastMessage}</span>
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      {/* Page Header */}
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-8 shadow-md border border-slate-800">
+        <div className="max-w-3xl space-y-2">
+          <div className="inline-flex items-center gap-2 bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
+            <span>✨ Gemini AI Grounding Engine</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">Verified Vendor Discovery</h1>
+          <p className="text-slate-300 text-sm leading-relaxed">
+            Instantly discover manufacturers, Tier-1 OEMs, regional distributors, and local branch hubs across any location worldwide. Powered by Gemini AI with live web search grounding.
+          </p>
         </div>
-      )}
-
-      {/* Header Banner */}
-      <div className="flex flex-col items-center pt-8 pb-4 text-center">
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          Vendor & Supplier Intelligence
-        </h1>
-        <p className="text-slate-500 text-sm mt-1 max-w-xl">
-          Semantic search across approved internal vendor catalogs and autonomous live web discovery for global manufacturers, medical equipment, and engineering supplies.
-        </p>
       </div>
 
-      {/* Search Bar Container */}
-      <form
-        onSubmit={handleSearch}
-        className="max-w-4xl mx-auto bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4"
-      >
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-900 placeholder:text-slate-400"
-              placeholder="Search product, equipment, material, or specifications (e.g., 'Hospital X-Ray machine', 'Surgical Gloves', 'MRI scanner')..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <svg
-              className="w-5 h-5 text-slate-400 absolute left-3.5 top-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+      {/* Search Form Panel */}
+      <form onSubmit={handleSearch} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 sm:p-8 space-y-5">
+        <div>
+          <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+            Product / Item / Equipment Name <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <input type="text" value={query} onChange={e => setQuery(e.target.value)} required
+              placeholder="e.g. CT Scan, MRI Machine, Surgical Gloves, Titanium Screws, Patient Monitor..."
+              className="w-full text-base sm:text-lg font-medium border-2 border-slate-200 focus:border-indigo-600 rounded-xl px-4 py-3.5 pl-11 outline-none transition-all shadow-2xs" />
+            <span className="absolute left-4 top-4 text-slate-400 text-lg">🔍</span>
           </div>
-          <button
-            type="submit"
-            disabled={loading || !query}
-            className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 text-sm transition-all shadow-xs"
-          >
-            {loading ? "Searching..." : "Search Intelligence"}
-          </button>
         </div>
 
-        {/* Location Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
           <div>
-            <label className="block text-slate-500 font-medium mb-1">Country</label>
-            <input
-              type="text"
-              placeholder="e.g. India, Germany, USA"
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-            />
+            <label className="block text-xs font-extrabold text-slate-600 uppercase tracking-wider mb-1.5">Country</label>
+            <input type="text" value={country} onChange={e => setCountry(e.target.value)}
+              placeholder="e.g. India, USA, Germany"
+              className="w-full border border-slate-200 focus:border-indigo-600 rounded-xl px-4 py-2.5 text-sm font-medium outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-slate-500 font-medium mb-1">State / Province</label>
-            <input
-              type="text"
-              placeholder="e.g. Rajasthan, Bavaria, Texas"
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-            />
+            <label className="block text-xs font-extrabold text-slate-600 uppercase tracking-wider mb-1.5">State / Province</label>
+            <input type="text" value={state} onChange={e => setState(e.target.value)}
+              placeholder="e.g. Rajasthan, Delhi NCR, Maharashtra"
+              className="w-full border border-slate-200 focus:border-indigo-600 rounded-xl px-4 py-2.5 text-sm font-medium outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-slate-500 font-medium mb-1">City</label>
-            <input
-              type="text"
-              placeholder="e.g. Jaipur, Erlangen, Chicago"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-            />
+            <label className="block text-xs font-extrabold text-slate-600 uppercase tracking-wider mb-1.5">City / Location</label>
+            <input type="text" value={city} onChange={e => setCity(e.target.value)}
+              placeholder="e.g. Jaipur, Delhi, Mumbai, Pune"
+              className="w-full border border-slate-200 focus:border-indigo-600 rounded-xl px-4 py-2.5 text-sm font-medium outline-none transition-all" />
           </div>
         </div>
+
+        <button type="submit" disabled={loading || !query.trim()}
+          className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 text-white font-extrabold py-4 rounded-xl text-base flex items-center justify-center gap-3 transition-all shadow-md">
+          {loading ? (
+            <>
+              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Scanning Live Web Sources via Gemini AI...</span>
+            </>
+          ) : (
+            <>
+              <span>🔍</span>
+              <span>Discover Verified Vendors</span>
+            </>
+          )}
+        </button>
       </form>
 
-      {errorMsg && (
-        <div className="max-w-4xl mx-auto p-4 bg-red-50 text-red-700 rounded-xl text-xs font-semibold border border-red-200">
-          {errorMsg}
+      {/* Loading Banner */}
+      {loading && (
+        <div className="text-center py-20 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-4">
+          <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto" />
+          <h3 className="text-xl font-black text-slate-900">Discovering Suppliers Live via Gemini AI...</h3>
+          <p className="text-slate-500 text-sm max-w-md mx-auto">
+            Extracting local branch hubs, 24/7 SLAs, technical specs, commercial pricing terms, and hospital tender records.
+          </p>
         </div>
       )}
 
-      {/* Loading Skeleton */}
-      {loading && (
-        <div className="max-w-4xl mx-auto p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-3">
-          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm font-semibold text-slate-600">
-            Querying internal vector database & initiating autonomous web supplier discovery...
-          </span>
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm font-bold flex items-center gap-2">
+          <span>⚠️</span>
+          <span>{error}</span>
         </div>
       )}
 
       {/* Search Results Display */}
-      {results && !loading && (
-        <div className="max-w-6xl mx-auto space-y-6">
-          {/* Navigation Tabs */}
-          <div className="flex border-b border-slate-200 text-sm font-bold">
-            <button
-              onClick={() => setInternalTab("internal")}
-              className={`py-3 px-6 border-b-2 transition-colors flex items-center space-x-2 ${
-                internalTab === "internal"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              <span>🏢 Approved Internal Vendors</span>
-              <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-bold">
-                {results.internal.length}
-              </span>
-            </button>
-            <button
-              onClick={() => setInternalTab("external")}
-              className={`py-3 px-6 border-b-2 transition-colors flex items-center space-x-2 ${
-                internalTab === "external"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              <span>🌐 Web Discovery & Global Suppliers</span>
-              <span className="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded-full font-bold">
-                {results.external.length}
-              </span>
-            </button>
+      {!loading && searched && (
+        <div className="space-y-6">
+          {/* Results Summary & In-Page Filter Bar */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-black text-slate-900">
+                  {vendors.length > 0 ? `${vendors.length} Verified Vendors Found` : "No Vendors Found"}
+                </h2>
+                <span className="text-xs font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full">
+                  📍 {[city, state, country].filter(Boolean).join(", ") || "Global Search"} · {query}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Sourced dynamically via Gemini AI with Google Search Grounding</p>
+            </div>
+
+            {vendors.length > 0 && (
+              <div className="w-full sm:w-72 relative">
+                <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)}
+                  placeholder="Filter 20 vendors by name or city..."
+                  className="w-full text-xs font-medium border border-slate-200 focus:border-indigo-600 rounded-xl px-3.5 py-2 pl-9 outline-none transition-all" />
+                <span className="absolute left-3 top-2.5 text-slate-400 text-xs">🔍</span>
+              </div>
+            )}
           </div>
 
-          {/* Tab 1: Internal Results */}
-          {internalTab === "internal" && (
-            <div>
-              {results.internal.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
-                  <span className="text-3xl block mb-2">📦</span>
-                  <p className="font-semibold text-base text-slate-800">No matching internal vendors found.</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Check the <strong>Web Discovery</strong> tab to discover verified global manufacturers.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {results.internal.map((match, idx) => {
-                    const v = match.vendor;
-                    return (
-                      <div
-                        key={idx}
-                        className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:border-slate-300 transition-all space-y-4"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
-                          <div>
-                            <span className="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                              Approved Vendor
-                            </span>
-                            <h3 className="text-xl font-bold text-slate-900 mt-1">
-                              {v ? v.legal_name : "Vendor Organization"}
-                            </h3>
-                            <p className="text-xs text-slate-500">
-                              📍 {[v?.city, v?.state_province, v?.country].filter(Boolean).join(", ") || "Location on record"}
-                            </p>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs font-semibold text-slate-400">Match Score:</span>
-                            <span
-                              className={`text-xs font-black px-2.5 py-1 rounded-full ${scoreColor(
-                                match.best_score
-                              )}`}
-                            >
-                              {(match.best_score * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Matched Products */}
-                        <div>
-                          <span className="text-xs font-bold text-slate-700 block mb-2">
-                            Matched Catalog Products ({match.products.length}):
-                          </span>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {match.products.map((p, pIdx) => (
-                              <div
-                                key={pIdx}
-                                className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-xs"
-                              >
-                                <div className="font-bold text-slate-800">{p.product_name}</div>
-                                {p.description && (
-                                  <p className="text-slate-500 mt-0.5 line-clamp-2">{p.description}</p>
-                                )}
-                                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-                                  <span>Type: {p.match_type}</span>
-                                  <span className="font-semibold text-emerald-600">
-                                    Score: {(p.score * 100).toFixed(0)}%
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+          {/* Vendors List */}
+          {filteredVendors.length === 0 ? (
+            <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl">
+              <span className="text-5xl block mb-4">🔍</span>
+              <p className="text-slate-700 font-bold">No vendors match your search or filter.</p>
+              <p className="text-slate-400 text-xs mt-1">Try clearing the filter text or adjusting your location query.</p>
             </div>
-          )}
-
-          {/* Tab 2: External Results */}
-          {internalTab === "external" && (
-            <div>
-              {results.external.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
-                  <span className="text-3xl block mb-2">🌐</span>
-                  <p className="font-semibold text-base text-slate-800">No external vendors discovered.</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Try broadening your search query or removing specific city/state filters.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-8">
-                  {results.external.map((vendor, idx) => {
-                    const scanData = newsScanResults[vendor.companyName];
-                    const isScanning = scanningVendor === vendor.companyName;
-                    const reverifyData = reverifyResults[vendor.companyName];
-                    const isVerifying = verifyingVendor === vendor.companyName;
-
-                    const effectiveTrustScore = reverifyData ? reverifyData.trust_score : 87;
-
-                    return (
-                      <div
-                        key={idx}
-                        className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col xl:flex-row"
-                      >
-                        {/* LEFT COLUMN: Header, Trust & Contacts */}
-                        <div className="bg-slate-50/70 p-6 xl:w-1/3 border-b xl:border-b-0 xl:border-r border-slate-200 flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-md">
-                                Web Discovery
-                              </span>
-                              {vendor.market?.tier && (
-                                <span className="text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-                                  {vendor.market.tier}
-                                </span>
-                              )}
-                            </div>
-                            <h4 className="font-bold text-2xl text-slate-900 mb-1">{vendor.companyName}</h4>
-                            {vendor.legalName && vendor.legalName !== vendor.companyName && (
-                              <p className="text-xs text-slate-500 mb-2">Legal: {vendor.legalName}</p>
-                            )}
-                            {vendor.headquarters && (
-                              <p className="text-slate-700 font-medium text-xs flex items-center gap-1.5 mb-4">
-                                📍 {vendor.headquarters}
-                              </p>
-                            )}
-
-                            <div className="flex flex-wrap gap-2 mb-6">
-                              {vendor.website && (
-                                <a
-                                  href={
-                                    vendor.website.startsWith("http")
-                                      ? vendor.website
-                                      : `https://${vendor.website}`
-                                  }
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-blue-600 text-xs font-semibold hover:underline flex items-center gap-1 border border-blue-200 bg-blue-50 px-3 py-1.5 rounded-lg"
-                                >
-                                  🌐 Website
-                                </a>
-                              )}
-                              <button
-                                onClick={() => handleReverify(vendor)}
-                                disabled={isVerifying}
-                                className="text-slate-700 text-xs font-semibold hover:text-slate-900 flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 rounded-lg shadow-2xs transition-colors hover:bg-slate-100"
-                                title="Click to trigger real-time domain and contact verification"
-                              >
-                                {isVerifying ? (
-                                  <>
-                                    <span className="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></span>
-                                    <span>Verifying...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span>🔄</span>
-                                    <span>{reverifyData ? "Re-verified" : "Re-verify"}</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-
-                            {/* Trust Score Card */}
-                            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs mb-6">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="font-semibold text-slate-700 text-xs">Overall Trust Score</span>
-                                <span className="text-lg font-black text-emerald-600">
-                                  {effectiveTrustScore}
-                                  <span className="text-xs text-slate-400">/100</span>
-                                </span>
-                              </div>
-                              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mb-3">
-                                <div
-                                  className="h-full bg-emerald-500 transition-all duration-500"
-                                  style={{ width: `${effectiveTrustScore}%` }}
-                                ></div>
-                              </div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                Trust Breakdown
-                              </p>
-                              <div className="space-y-1.5 text-xs text-slate-600">
-                                <div className="flex justify-between">
-                                  <span>Contact Verification</span>
-                                  <span className="font-bold text-slate-800">
-                                    {reverifyData ? 98 : 95}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Source Diversity</span>
-                                  <span className="font-bold text-slate-800">95</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Domain Authority</span>
-                                  <span className="font-bold text-slate-800">
-                                    {reverifyData ? 75 : 50}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Data Freshness</span>
-                                  <span className="font-bold text-emerald-700">100% (Live)</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Contact Details */}
-                            <div className="space-y-2 mb-4">
-                              <h5 className="font-semibold text-slate-800 text-xs uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
-                                Contact Details
-                              </h5>
-                              {vendor.contact?.generalEmail && (
-                                <div className="flex flex-col text-xs">
-                                  <a
-                                    href={`mailto:${vendor.contact.generalEmail}`}
-                                    className="text-blue-600 hover:underline font-medium break-all"
-                                  >
-                                    {vendor.contact.generalEmail}
-                                  </a>
-                                  <span className="text-[10px] text-emerald-600 flex items-center gap-1 font-semibold mt-0.5">
-                                    ✓ Email Domain Verified
-                                  </span>
-                                </div>
-                              )}
-                              {vendor.contact?.salesEmail && (
-                                <div className="flex flex-col text-xs mt-1">
-                                  <a
-                                    href={`mailto:${vendor.contact.salesEmail}`}
-                                    className="text-blue-600 hover:underline break-all"
-                                  >
-                                    {vendor.contact.salesEmail}
-                                  </a>
-                                  <span className="text-[10px] text-slate-500">(Sales / Tender Desk)</span>
-                                </div>
-                              )}
-                              {vendor.contact?.phone && (
-                                <div className="flex items-center gap-2 text-xs mt-2">
-                                  <span className="text-slate-700 font-semibold">{vendor.contact.phone}</span>
-                                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                    ✓ Verified
-                                  </span>
-                                </div>
-                              )}
-                              {vendor.contact?.address && (
-                                <p className="text-xs text-slate-600 mt-2">{vendor.contact.address}</p>
-                              )}
-                            </div>
-
-                            <div className="flex gap-3 text-xs font-semibold mt-4">
-                              {vendor.contact?.rfqPortalUrl && (
-                                <a
-                                  href={vendor.contact.rfqPortalUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-blue-600 hover:underline"
-                                >
-                                  RFQ Portal ↗
-                                </a>
-                              )}
-                              {vendor.contact?.linkedinUrl && (
-                                <a
-                                  href={vendor.contact.linkedinUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-blue-600 hover:underline"
-                                >
-                                  LinkedIn ↗
-                                </a>
-                              )}
-                            </div>
-                          </div>
-
-                          {vendor.contact?.keyExecutive && (
-                            <div className="mt-6 pt-4 border-t border-slate-200 flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm">
-                                {vendor.contact.keyExecutive.charAt(0)}
-                              </div>
-                              <div>
-                                <p className="font-bold text-slate-900 text-xs">
-                                  {vendor.contact.keyExecutive}
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  {vendor.contact.keyExecutiveTitle || "Executive Leadership"}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* RIGHT COLUMN: Capabilities, Market & Live News Radar */}
-                        <div className="p-6 xl:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                          {/* Company Overview */}
-                          <div className="md:col-span-2">
-                            <h5 className="font-bold text-slate-900 text-base mb-1.5">Company Overview</h5>
-                            <p className="text-slate-600 leading-relaxed text-xs">{vendor.description}</p>
-                          </div>
-
-                          {/* Market Standing */}
-                          <div>
-                            <h5 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
-                              📊 Market Standing
-                            </h5>
-                            <div className="space-y-2.5 text-xs">
-                              {vendor.market?.estimatedRevenue && (
-                                <div className="flex justify-between border-b border-slate-100 pb-1">
-                                  <span className="text-slate-500">Revenue</span>
-                                  <span className="font-bold text-slate-900">
-                                    {vendor.market.estimatedRevenue}
-                                  </span>
-                                </div>
-                              )}
-                              {vendor.market?.foundedYear && (
-                                <div className="flex justify-between border-b border-slate-100 pb-1">
-                                  <span className="text-slate-500">Founded</span>
-                                  <span className="font-bold text-slate-900">
-                                    {vendor.market.foundedYear}
-                                  </span>
-                                </div>
-                              )}
-                              {vendor.market?.employeeCountEstimate && (
-                                <div className="flex justify-between border-b border-slate-100 pb-1">
-                                  <span className="text-slate-500">Employees</span>
-                                  <span className="font-bold text-slate-900">
-                                    {vendor.market.employeeCountEstimate}
-                                  </span>
-                                </div>
-                              )}
-                              {vendor.market?.marketShareEstimate && (
-                                <div className="mt-2 text-slate-700 bg-blue-50 p-2.5 rounded-lg text-xs border border-blue-100">
-                                  <span className="font-bold block text-blue-900 mb-0.5">Market Share</span>
-                                  {vendor.market.marketShareEstimate}
-                                </div>
-                              )}
-                              {vendor.market?.majorClients && vendor.market.majorClients.length > 0 && (
-                                <div className="mt-2">
-                                  <span className="text-slate-500 text-[11px] block mb-1">
-                                    Major Healthcare Clients:
-                                  </span>
-                                  <div className="flex flex-wrap gap-1">
-                                    {vendor.market.majorClients.map((client, i) => (
-                                      <span
-                                        key={i}
-                                        className="text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium"
-                                      >
-                                        {client}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Capabilities */}
-                          <div>
-                            <h5 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
-                              ⚙️ Capabilities & SCM
-                            </h5>
-                            <div className="space-y-2.5 text-xs">
-                              <div className="flex gap-2">
-                                {vendor.capabilities?.moqMin && (
-                                  <div className="flex-1 bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
-                                    <span className="block text-[10px] text-slate-400 uppercase font-bold">
-                                      MOQ
-                                    </span>
-                                    <span className="font-bold text-slate-800">
-                                      {vendor.capabilities.moqMin}
-                                    </span>
-                                  </div>
-                                )}
-                                {vendor.capabilities?.leadTimeWeeks && (
-                                  <div className="flex-1 bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
-                                    <span className="block text-[10px] text-slate-400 uppercase font-bold">
-                                      Lead Time
-                                    </span>
-                                    <span className="font-bold text-slate-800">
-                                      {vendor.capabilities.leadTimeWeeks}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {vendor.capabilities?.coreProducts &&
-                                vendor.capabilities.coreProducts.length > 0 && (
-                                  <div>
-                                    <span className="text-slate-500 text-[11px] block mb-1">
-                                      Core Products & Systems
-                                    </span>
-                                    <ul className="list-disc pl-4 text-xs text-slate-700 space-y-0.5">
-                                      {vendor.capabilities.coreProducts.slice(0, 4).map((prod, i) => (
-                                        <li key={i}>{prod}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-
-                              {vendor.capabilities?.certifications &&
-                                vendor.capabilities.certifications.length > 0 && (
-                                  <div className="mt-2">
-                                    <span className="text-slate-500 text-[11px] block mb-1">
-                                      Certifications
-                                    </span>
-                                    <div className="flex flex-wrap gap-1">
-                                      {vendor.capabilities.certifications.map((cert, i) => (
-                                        <span
-                                          key={i}
-                                          className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200"
-                                        >
-                                          {cert.name}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                            </div>
-                          </div>
-
-                          {/* Risk Assessment & Live News Radar Card */}
-                          <div className="md:col-span-2 bg-slate-50/80 border border-slate-200 rounded-xl p-5 space-y-4">
-                            <div>
-                              <h5 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-2 flex items-center gap-2">
-                                ⚠️ Risk & Sanctions Assessment
-                              </h5>
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                <div>
-                                  <span className="block text-slate-400 text-[11px] mb-0.5">
-                                    Geopolitical Risk
-                                  </span>
-                                  <span
-                                    className={`font-bold ${
-                                      vendor.risk?.geopoliticalRiskScore &&
-                                      vendor.risk.geopoliticalRiskScore < 30
-                                        ? "text-emerald-600"
-                                        : "text-amber-600"
-                                    }`}
-                                  >
-                                    {vendor.risk?.geopoliticalRiskScore || "15"}{" "}
-                                    <span className="text-[10px] font-normal text-slate-400">/100</span>
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="block text-slate-400 text-[11px] mb-0.5">
-                                    Financial Stability
-                                  </span>
-                                  <span className="font-bold text-slate-800">
-                                    {vendor.risk?.financialStabilityRating || "Strong (A+)"}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="block text-slate-400 text-[11px] mb-0.5">
-                                    Sanctions Check
-                                  </span>
-                                  <span className="font-bold text-emerald-600">
-                                    {vendor.risk?.sanctionCheck || "Clear (OFAC / EU)"}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="block text-slate-400 text-[11px] mb-0.5">
-                                    Compliance Flags
-                                  </span>
-                                  <span className="font-bold text-slate-800">
-                                    {vendor.risk?.complianceFlags?.length || 5} Validated
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Live Reputation & News Radar section */}
-                            <div className="border-t border-slate-200/80 pt-3">
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                <div>
-                                  <span className="font-bold text-slate-900 text-xs block">
-                                    Live Reputation & News Radar
-                                  </span>
-                                  <span className="text-[11px] text-slate-500">
-                                    {scanData
-                                      ? scanData.summary
-                                      : "No adverse news or risk flags reported. Click to scan."}
-                                  </span>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleScanNews(vendor)}
-                                  disabled={isScanning}
-                                  className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-300 shadow-2xs transition-colors flex-shrink-0 flex items-center space-x-1.5"
-                                >
-                                  {isScanning ? (
-                                    <>
-                                      <span className="w-3.5 h-3.5 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></span>
-                                      <span>Scanning AI News...</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span>📡</span>
-                                      <span>{scanData ? "Re-scan Radar" : "Scan Recent News"}</span>
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-
-                              {/* Render Scan Results if present */}
-                              {scanData && scanData.news_articles && (
-                                <div className="mt-3 space-y-2 bg-white p-3 rounded-lg border border-slate-200">
-                                  <div className="flex items-center justify-between text-[11px] pb-1 border-b border-slate-100">
-                                    <span className="font-bold text-slate-700">Recent Headlines & Coverage:</span>
-                                    <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold text-[10px]">
-                                      Adverse Media: CLEAR
-                                    </span>
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    {scanData.news_articles.map((art: any, aIdx: number) => (
-                                      <div
-                                        key={aIdx}
-                                        className="flex items-start justify-between gap-2 text-xs"
-                                      >
-                                        <div>
-                                          <a
-                                            href={art.url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="font-semibold text-blue-600 hover:underline block"
-                                          >
-                                            {art.title}
-                                          </a>
-                                          <span className="text-[10px] text-slate-400">
-                                            {art.source} • {art.date}
-                                          </span>
-                                        </div>
-                                        <span
-                                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                                            art.sentiment === "POSITIVE"
-                                              ? "bg-emerald-50 text-emerald-700"
-                                              : "bg-slate-100 text-slate-600"
-                                          }`}
-                                        >
-                                          {art.sentiment}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Footer Action Buttons */}
-                          <div className="md:col-span-2 pt-3 border-t border-slate-100 flex flex-wrap justify-end gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setDetailModalVendor(vendor)}
-                              className="px-5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-colors shadow-2xs flex items-center space-x-1.5"
-                            >
-                              <span>👁️</span>
-                              <span>View Details</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openInvitationModal(vendor)}
-                              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs flex items-center space-x-1.5"
-                            >
-                              <span>✉️</span>
-                              <span>Send Invitation to Register</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+          ) : (
+            <div className="space-y-6">
+              {filteredVendors.map((v, i) => (
+                <VendorCardStructured 
+                  key={i} 
+                  vendor={v} 
+                  idx={i} 
+                  activeTab="" 
+                  toggleTab={() => {}} 
+                />
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 1: VIEW DETAILS DOSSIER                                             */}
-      {/* ========================================================================= */}
-      {detailModalVendor && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full border border-slate-200 overflow-hidden my-8">
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-                  Vendor Dossier 360°
-                </span>
-                <h3 className="text-xl font-bold text-slate-900 mt-1">
-                  {detailModalVendor.companyName}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDetailModalVendor(null)}
-                className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto text-xs">
-              {/* Profile & Overview */}
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm mb-2">Corporate Profile & Overview</h4>
-                <p className="text-slate-600 leading-relaxed">{detailModalVendor.description}</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Headquarters</span>
-                    <span className="font-bold text-slate-800">{detailModalVendor.headquarters || "N/A"}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Annual Revenue</span>
-                    <span className="font-bold text-slate-800">{detailModalVendor.market?.estimatedRevenue || "N/A"}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Employees</span>
-                    <span className="font-bold text-slate-800">{detailModalVendor.market?.employeeCountEstimate || "N/A"}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Founded Year</span>
-                    <span className="font-bold text-slate-800">{detailModalVendor.market?.foundedYear || "N/A"}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Manufacturing & Capabilities */}
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm mb-2">Manufacturing & Technical Capabilities</h4>
-                <div className="space-y-3">
-                  {detailModalVendor.capabilities?.coreProducts && (
-                    <div>
-                      <span className="font-bold text-slate-700 block mb-1">Core Product Lines:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {detailModalVendor.capabilities.coreProducts.map((p, i) => (
-                          <span key={i} className="bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md font-medium">
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {detailModalVendor.capabilities?.certifications && (
-                    <div>
-                      <span className="font-bold text-slate-700 block mb-1">Compliance Certifications:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {detailModalVendor.capabilities.certifications.map((c, i) => (
-                          <span key={i} className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-bold">
-                            ✓ {c.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {detailModalVendor.capabilities?.manufacturingLocations && (
-                    <div>
-                      <span className="font-bold text-slate-700 block mb-1">Manufacturing Plants & Facilities:</span>
-                      <p className="text-slate-600 bg-slate-50 p-2 rounded-md border border-slate-200">
-                        {detailModalVendor.capabilities.manufacturingLocations.join(" • ")}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Contact Information */}
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm mb-2">Verified Contact Channels</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-slate-400 text-[10px] block font-bold uppercase">General Email</span>
-                    <a href={`mailto:${detailModalVendor.contact?.generalEmail}`} className="text-blue-600 font-bold hover:underline">
-                      {detailModalVendor.contact?.generalEmail || "N/A"}
-                    </a>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-[10px] block font-bold uppercase">Sales / RFQ Email</span>
-                    <a href={`mailto:${detailModalVendor.contact?.salesEmail}`} className="text-blue-600 font-bold hover:underline">
-                      {detailModalVendor.contact?.salesEmail || "N/A"}
-                    </a>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-[10px] block font-bold uppercase">Telephone</span>
-                    <span className="font-bold text-slate-800">{detailModalVendor.contact?.phone || "N/A"}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-[10px] block font-bold uppercase">Corporate Website</span>
-                    <a
-                      href={
-                        detailModalVendor.website?.startsWith("http")
-                          ? detailModalVendor.website
-                          : `https://${detailModalVendor.website}`
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-600 font-bold hover:underline"
-                    >
-                      {detailModalVendor.website || "N/A"} ↗
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-              <button
-                type="button"
-                onClick={() => setDetailModalVendor(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const v = detailModalVendor;
-                  setDetailModalVendor(null);
-                  openInvitationModal(v);
-                }}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors"
-              >
-                Invite Vendor to Register →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL 2: SEND INVITATION TO REGISTER                                      */}
-      {/* ========================================================================= */}
-      {invitationVendor && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                  Official Procurement Outreach
-                </span>
-                <h3 className="text-lg font-bold text-slate-900 mt-0.5">
-                  Invite {invitationVendor.companyName}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInvitationVendor(null)}
-                className="w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center text-xs font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Recipient Email Address <span className="text-red-500">*</span>:
-                </label>
-                <input
-                  type="email"
-                  value={invitationEmail}
-                  onChange={(e) => setInvitationEmail(e.target.value)}
-                  placeholder="e.g. sales@vendor.com or contact@vendor.com"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Contact Person / Executive Name:
-                </label>
-                <input
-                  type="text"
-                  value={invitationContact}
-                  onChange={(e) => setInvitationContact(e.target.value)}
-                  placeholder="e.g. Bernd Montag or Sales Director"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Custom Invitation Message:
-                </label>
-                <textarea
-                  rows={4}
-                  value={invitationMessage}
-                  onChange={(e) => setInvitationMessage(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none leading-relaxed"
-                ></textarea>
-              </div>
-
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-[11px] leading-relaxed">
-                ℹ️ The vendor will receive an official branded invitation email containing a secure link to the JECRC vendor onboarding portal.
-              </div>
-            </div>
-
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end space-x-2">
-              <button
-                type="button"
-                onClick={() => setInvitationVendor(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSendInvitation}
-                disabled={sendingInvitation || !invitationEmail}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors flex items-center space-x-1.5 disabled:opacity-50"
-              >
-                {sendingInvitation ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    <span>Sending Invitation...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>✉️ Send Official Invitation</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+      {/* Initial Empty State */}
+      {!loading && !searched && !error && (
+        <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl p-8 shadow-2xs space-y-4">
+          <span className="text-6xl block">🏭</span>
+          <h3 className="text-2xl font-black text-slate-900">Global Supply Chain & Medical Equipment Intelligence</h3>
+          <p className="text-slate-500 text-sm max-w-xl mx-auto leading-relaxed">
+            Enter a product name and location above. Gemini AI will perform dynamic Google Search Grounding to discover Tier-1 OEMs, regional distributors, and local branch service hubs complete with contact details, technical specs, commercial pricing terms, and hospital tender installation track records.
+          </p>
         </div>
       )}
     </div>

@@ -224,7 +224,7 @@ async def extract_boq_with_gemini(raw_text: str) -> Dict[str, Any]:
     import asyncio
 
     client = genai.Client(api_key=api_key)
-    models = ["gemini-3.6-flash", "gemini-3.7-flash"]
+    models = ["gemini-3.7-flash", "gemini-3.6-flash"]
 
 
     chunks = _split_text_into_chunks(raw_text, max_chunk_chars=7500)
