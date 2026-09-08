@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.boq import BOQ, BOQItem, BOQSubmission, BOQSubmissionItem, BOQVendorTarget
+from app.models.vendor import VendorOrganization
 from app.models.document import DocumentVersion
 from app.services.storage.local import LocalStorageService
 from app.services.document import DocumentService
