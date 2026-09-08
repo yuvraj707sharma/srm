@@ -37,6 +37,16 @@ interface VendorMeta {
   payment_terms: string;
   delivery_time: string;
   warranty_terms?: string;
+  model_no?: string;
+  tank_capacity_location?: string;
+  payment_terms_sitc?: string;
+  payment_terms_gas?: string;
+  agreement_tenure?: string;
+  lock_in_period?: string;
+  civil_work_scope?: string;
+  price_escalation?: string;
+  mode_of_delivery?: string;
+  minimum_expected_volume?: string;
   sub_total: number;
   gst_percent: number;
   gst_amount: number;
@@ -110,6 +120,7 @@ interface ComparativeData {
   tender_number: string;
   title: string;
   department?: string;
+  boq_type?: "COMMERCIAL" | "TECHNICAL" | "TECHNOCOMMERCIAL";
   status: string;
   deadline_at?: string;
   is_locked: boolean;
@@ -132,8 +143,8 @@ export default function ComparativeStatementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Active view tab: "matrix" | "advisory" | "discrepancies" | "cost"
-  const [activeTab, setActiveTab] = useState<"advisory" | "matrix" | "discrepancies" | "cost">("advisory");
+  // Active view tab: "commercial_lmo" | "matrix" | "advisory" | "discrepancies" | "cost"
+  const [activeTab, setActiveTab] = useState<"commercial_lmo" | "advisory" | "matrix" | "discrepancies" | "cost">("advisory");
 
   // Modal State for Vendor BOQ Detail View
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
@@ -142,6 +153,7 @@ export default function ComparativeStatementPage() {
   // Action loading states
   const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   // Negotiated Rates State: { [submission_id]: { [submission_item_id]: price } }
   const [negotiatedRates, setNegotiatedRates] = useState<Record<string, Record<string, number>>>({});
@@ -161,6 +173,10 @@ export default function ComparativeStatementPage() {
       }
       const compData = await res.json();
       setData(compData);
+
+      if (compData.boq_type === "COMMERCIAL") {
+        setActiveTab("commercial_lmo");
+      }
 
       // Initialize negotiation edits
       const initialRates: Record<string, Record<string, number>> = {};
@@ -265,6 +281,22 @@ export default function ComparativeStatementPage() {
     }
   };
 
+  const handleCloseTender = async () => {
+    if (!confirm("Are you sure you want to close tender submissions? This will lock all submissions and freeze comparative pricing.")) return;
+    try {
+      setIsClosing(true);
+      const res = await fetchApi(`/api/v1/admin/boq/${boqId}/close`, { method: "POST" });
+      if (!res.ok) {
+        throw new Error("Failed to close tender submissions.");
+      }
+      await loadComparativeData();
+    } catch (err: any) {
+      alert("Error closing tender: " + (err.message || "Failed"));
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
   const openVendorDetail = (submissionId: string, vendorName: string) => {
     setSelectedSubmissionId(submissionId);
     setSelectedVendorName(vendorName);
@@ -306,13 +338,22 @@ export default function ComparativeStatementPage() {
       {/* Header Banner */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div>
-          <div className="flex items-center space-x-2 mb-1.5">
+          <div className="flex items-center space-x-2 mb-1.5 flex-wrap gap-y-1">
             <Link href="/admin/boq" className="text-xs font-semibold text-indigo-600 hover:underline">
               ← Back to BOQs
             </Link>
             <span className="text-slate-300">•</span>
             <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
               {data.tender_number}
+            </span>
+            <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${
+              data.boq_type === "COMMERCIAL"
+                ? "bg-amber-50 text-amber-800 border-amber-200"
+                : data.boq_type === "TECHNICAL"
+                ? "bg-blue-50 text-blue-800 border-blue-200"
+                : "bg-purple-50 text-purple-800 border-purple-200"
+            }`}>
+              {data.boq_type || "COMMERCIAL"} BOQ
             </span>
             {data.department && (
               <span className="text-xs font-medium text-slate-500">Dept: {data.department}</span>
@@ -322,21 +363,41 @@ export default function ComparativeStatementPage() {
             Comparative Statement: {data.title}
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Commercial L1, Technical T1, QCBS Composite Scoring & Specification Discrepancy Analysis
+            {data.boq_type === "COMMERCIAL"
+              ? "Comprehensive Commercial Evaluation, Recurring Rates, One-Time SITC Charges & Terms Matrix (LMO Format)"
+              : "Commercial L1, Technical T1, QCBS Composite Scoring & Specification Discrepancy Analysis"}
           </p>
         </div>
 
         {/* Action Bar */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleRunAiAudit}
-            disabled={isAuditing}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-xs transition-all disabled:opacity-50"
-            title="Re-verify all quoted makes/models against tender specifications using Gemini AI"
-          >
-            <span className={isAuditing ? "animate-spin" : ""}>⚡</span>
-            <span>{isAuditing ? "Auditing Specifications..." : "Re-run AI Spec Audit"}</span>
-          </button>
+          {!data.is_locked ? (
+            <button
+              onClick={handleCloseTender}
+              disabled={isClosing}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-xs transition-all disabled:opacity-50 shadow-xs"
+              title="Close bidding submissions early and freeze comparative rates"
+            >
+              <span>🔒</span>
+              <span>{isClosing ? "Closing..." : "Close Submissions (Lock)"}</span>
+            </button>
+          ) : (
+            <span className="inline-flex items-center space-x-1.5 px-3 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs">
+              <span>🔒 Submissions Locked</span>
+            </span>
+          )}
+
+          {data.boq_type !== "COMMERCIAL" && (
+            <button
+              onClick={handleRunAiAudit}
+              disabled={isAuditing}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-xs transition-all disabled:opacity-50"
+              title="Re-verify all quoted makes/models against tender specifications using Gemini AI"
+            >
+              <span className={isAuditing ? "animate-spin" : ""}>⚡</span>
+              <span>{isAuditing ? "Auditing Specifications..." : "Re-run AI Spec Audit"}</span>
+            </button>
+          )}
 
           <button
             onClick={handleDownloadExcel}
@@ -390,7 +451,20 @@ export default function ComparativeStatementPage() {
       )}
 
       {/* Navigation View Tabs */}
-      <div className="flex border-b border-slate-200 space-x-2 text-xs font-bold px-2">
+      <div className="flex border-b border-slate-200 space-x-2 text-xs font-bold px-2 flex-wrap gap-y-1">
+        {data.boq_type === "COMMERCIAL" && (
+          <button
+            onClick={() => setActiveTab("commercial_lmo")}
+            className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
+              activeTab === "commercial_lmo"
+                ? "bg-white text-amber-800 border-t-2 border-x border-slate-200 font-extrabold shadow-xs"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <span>🧪</span>
+            <span>Official Commercial Statement (LMO Excel Reference)</span>
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("advisory")}
           className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
@@ -413,20 +487,22 @@ export default function ComparativeStatementPage() {
           <span>📊</span>
           <span>Comparative Matrix & Negotiations</span>
         </button>
-        <button
-          onClick={() => setActiveTab("discrepancies")}
-          className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
-            activeTab === "discrepancies"
-              ? "bg-white text-indigo-700 border-t-2 border-x border-slate-200 font-extrabold shadow-xs"
-              : "text-slate-500 hover:text-slate-900"
-          }`}
-        >
-          <span>🔬</span>
-          <span>Technical Spec Match & Discrepancies</span>
-          {isL1AtRisk && (
-            <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
-          )}
-        </button>
+        {data.boq_type !== "COMMERCIAL" && (
+          <button
+            onClick={() => setActiveTab("discrepancies")}
+            className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
+              activeTab === "discrepancies"
+                ? "bg-white text-indigo-700 border-t-2 border-x border-slate-200 font-extrabold shadow-xs"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <span>🔬</span>
+            <span>Technical Spec Match & Discrepancies</span>
+            {isL1AtRisk && (
+              <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+            )}
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("cost")}
           className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
@@ -439,6 +515,430 @@ export default function ComparativeStatementPage() {
           <span>Cost-Wise Spread & Variance</span>
         </button>
       </div>
+
+      {/* ========================================================================= */}
+      {/* TAB: COMMERCIAL / LMO TENDER COMPARATIVE STATEMENT (EXCEL MIRROR) */}
+      {/* ========================================================================= */}
+      {activeTab === "commercial_lmo" && (
+        <div className="space-y-8">
+          {/* LMO Highlights Banner */}
+          <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-emerald-50 p-6 rounded-3xl border-2 border-amber-300 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xl">🧪</span>
+                <span className="text-xs font-black uppercase tracking-wider text-amber-900 bg-amber-200/70 px-2.5 py-0.5 rounded-full">
+                  Liquid Medical Oxygen (LMO) Commercial Comparative Statement
+                </span>
+              </div>
+              <h2 className="text-lg font-black text-slate-900 mt-1">
+                JECRC Medical College & Hospital Procurement Evaluation
+              </h2>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Evaluates Recurring Supply Rates (LMO Liquid Oxygen), One-time SITC/Installation charges, and PESO compliance terms.
+              </p>
+            </div>
+
+            {l1Vendor && (
+              <div className="p-4 bg-[#FEF08A] rounded-2xl border-2 border-amber-400 text-slate-950 shadow-sm text-right shrink-0">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-900 block">
+                  Recommended Commercial L-1 Bidder
+                </span>
+                <span className="text-base font-black block mt-0.5">{l1Vendor.vendor_name}</span>
+                <span className="text-xs font-mono font-black text-slate-900">
+                  Effective Total: ₹{l1Vendor.effective_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Master LMO Table (Mirroring Comparative Statement of LMO.xlsx) */}
+          <div className="bg-white rounded-3xl border border-slate-300 shadow-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                {/* 1. Header Rows (Rows 3-7 from Excel) */}
+                <thead className="bg-slate-900 text-white">
+                  {/* Row 3: Vendor Column Header */}
+                  <tr className="border-b border-slate-700">
+                    <th colSpan={3} className="px-4 py-3 text-sm font-black uppercase tracking-wider bg-slate-950">
+                      Comparative Particulars
+                    </th>
+                    {data.vendors.map((v, idx) => (
+                      <th
+                        key={v.submission_id}
+                        colSpan={3}
+                        className={`px-4 py-3 text-center border-l border-slate-700 font-black text-xs ${
+                          v.l_rank === "L1" ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-center space-x-2">
+                          <span className="px-2 py-0.5 rounded bg-black/30 font-mono text-xs">
+                            {v.l_rank}
+                          </span>
+                          <span>Vendor {idx + 1}: {v.vendor_name}</span>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+
+                  {/* Row 4: Legal / Registered Name */}
+                  <tr className="bg-slate-850 text-slate-300 border-b border-slate-800 text-[11px]">
+                    <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
+                      Name of Vendor:
+                    </th>
+                    {data.vendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 text-white font-bold">
+                        {v.company_name || v.vendor_name}
+                      </th>
+                    ))}
+                  </tr>
+
+                  {/* Row 5: Contact Person & Phone */}
+                  <tr className="bg-slate-850 text-slate-300 border-b border-slate-800 text-[11px]">
+                    <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
+                      Contact Person & Phone:
+                    </th>
+                    {data.vendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 font-mono font-normal">
+                        {v.contact_no || v.primary_email || "-"}
+                      </th>
+                    ))}
+                  </tr>
+
+                  {/* Row 6: Model No */}
+                  <tr className="bg-slate-850 text-slate-300 border-b border-slate-800 text-[11px]">
+                    <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
+                      Model No / Make:
+                    </th>
+                    {data.vendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 font-semibold text-emerald-300">
+                        {v.model_no || "Liquid Medical Oxygen IP"}
+                      </th>
+                    ))}
+                  </tr>
+
+                  {/* Row 7: Tank Capacity & Location */}
+                  <tr className="bg-slate-850 text-slate-300 border-b border-slate-800 text-[11px]">
+                    <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
+                      Tank Capacity & Location:
+                    </th>
+                    {data.vendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 text-blue-200">
+                        {v.tank_capacity_location || "13 KL (PESO Approved Tank) at Hospital Campus"}
+                      </th>
+                    ))}
+                  </tr>
+
+                  {/* Sub-Header Row: Rate Columns */}
+                  <tr className="bg-slate-800 text-slate-300 text-[11px] font-bold border-b border-slate-700">
+                    <th className="px-3 py-2 w-12 text-center">#</th>
+                    <th className="px-4 py-2 min-w-[240px]">Item Description</th>
+                    <th className="px-3 py-2 w-20 text-center">UOM</th>
+                    {data.vendors.map((v) => (
+                      <Fragment key={v.submission_id}>
+                        <th className="px-3 py-2 w-28 text-right border-l border-slate-700">
+                          Quoted (₹)
+                        </th>
+                        <th className="px-3 py-2 w-28 text-right bg-blue-900/40 text-blue-200">
+                          Negotiated (₹)
+                        </th>
+                        <th className="px-3 py-2 w-28 text-right">
+                          Total Amount (₹)
+                        </th>
+                      </Fragment>
+                    ))}
+                  </tr>
+                </thead>
+
+                {/* 2. Table Body (Recurring + One-Time + Terms + Ratings) */}
+                <tbody className="divide-y divide-slate-200 text-slate-800">
+                  {/* PART 1: RECURRING SECTION HEADER */}
+                  <tr className="bg-amber-100/70 font-black text-amber-950 border-t-2 border-amber-300">
+                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 uppercase tracking-wider text-xs">
+                      Part 1: Recurring Supply Charges (Gas & Consumables)
+                    </td>
+                  </tr>
+
+                  {/* Recurring Rows */}
+                  {data.rows
+                    .filter((r) => {
+                      const desc = (r.item_name + " " + r.specifications).toLowerCase();
+                      return !desc.includes("installation") && !desc.includes("peso") && !desc.includes("telemetry") && !desc.includes("alarm");
+                    })
+                    .map((row) => (
+                      <tr key={row.boq_item_id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3 py-2.5 text-center font-mono font-semibold text-slate-500">
+                          {row.s_no}
+                        </td>
+                        <td className="px-4 py-2.5 font-bold text-slate-900">
+                          {row.item_name}
+                          {row.specifications && (
+                            <span className="text-[11px] font-normal text-slate-500 block">
+                              {row.specifications}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-slate-600 font-medium">
+                          {row.uom} ({row.quantity})
+                        </td>
+
+                        {data.vendors.map((v) => {
+                          const quote = row.vendor_quotes[v.submission_id];
+                          const quotedPrice = quote?.initial_quoted_price || 0;
+                          const negPrice = negotiatedRates[v.submission_id]?.[quote?.submission_item_id || ""] !== undefined
+                            ? negotiatedRates[v.submission_id][quote?.submission_item_id || ""]
+                            : (quote?.negotiated_price !== undefined ? quote.negotiated_price : quotedPrice);
+                          const total = (negPrice && negPrice > 0 ? negPrice : quotedPrice) * row.quantity;
+
+                          return (
+                            <Fragment key={v.submission_id}>
+                              <td className="px-3 py-2.5 text-right font-mono border-l border-slate-200">
+                                ₹{quotedPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-2 py-2 text-right bg-blue-50/50">
+                                <input
+                                  type="number"
+                                  value={negPrice !== undefined ? negPrice : ""}
+                                  onChange={(e) =>
+                                    quote?.submission_item_id &&
+                                    handleNegotiatedPriceChange(v.submission_id, quote.submission_item_id, e.target.value)
+                                  }
+                                  placeholder={String(quotedPrice)}
+                                  className="w-24 text-right px-2 py-1 bg-white border border-slate-300 rounded font-mono text-xs focus:ring-2 focus:ring-blue-500"
+                                />
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">
+                                ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </Fragment>
+                          );
+                        })}
+                      </tr>
+                    ))}
+
+                  {/* Recurring Sub Total Row */}
+                  <tr className="bg-slate-100 font-bold border-t border-slate-300">
+                    <td colSpan={3} className="px-4 py-2.5 text-right uppercase text-slate-700">
+                      Sub Total (Recurring Charges):
+                    </td>
+                    {data.vendors.map((v) => (
+                      <Fragment key={v.submission_id}>
+                        <td className="border-l border-slate-300"></td>
+                        <td className="text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveNegotiations(v.submission_id)}
+                            disabled={savingNegotiation}
+                            className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold"
+                          >
+                            Save
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">
+                          ₹{v.sub_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                      </Fragment>
+                    ))}
+                  </tr>
+
+                  {/* Recurring GST 18% Row */}
+                  <tr className="bg-slate-50 text-[11px] font-semibold">
+                    <td colSpan={3} className="px-4 py-2 text-right uppercase text-slate-600">
+                      GST Extra (18%):
+                    </td>
+                    {data.vendors.map((v) => (
+                      <Fragment key={v.submission_id}>
+                        <td className="border-l border-slate-200"></td>
+                        <td></td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-700">
+                          ₹{v.gst_amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                      </Fragment>
+                    ))}
+                  </tr>
+
+                  {/* PART 2: ONE-TIME / SITC CHARGES SECTION */}
+                  <tr className="bg-amber-100/70 font-black text-amber-950 border-t-2 border-amber-300">
+                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 uppercase tracking-wider text-xs">
+                      Part 2: One-Time / SITC Installation & Commissioning Charges
+                    </td>
+                  </tr>
+
+                  {/* One-time Items */}
+                  {data.rows
+                    .filter((r) => {
+                      const desc = (r.item_name + " " + r.specifications).toLowerCase();
+                      return desc.includes("installation") || desc.includes("peso") || desc.includes("telemetry") || desc.includes("alarm");
+                    })
+                    .map((row) => (
+                      <tr key={row.boq_item_id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3 py-2.5 text-center font-mono font-semibold text-slate-500">
+                          {row.s_no}
+                        </td>
+                        <td className="px-4 py-2.5 font-bold text-slate-900">
+                          {row.item_name}
+                          {row.specifications && (
+                            <span className="text-[11px] font-normal text-slate-500 block">
+                              {row.specifications}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-slate-600 font-medium">
+                          {row.uom} ({row.quantity})
+                        </td>
+
+                        {data.vendors.map((v) => {
+                          const quote = row.vendor_quotes[v.submission_id];
+                          const quotedPrice = quote?.initial_quoted_price || 0;
+                          const negPrice = negotiatedRates[v.submission_id]?.[quote?.submission_item_id || ""] !== undefined
+                            ? negotiatedRates[v.submission_id][quote?.submission_item_id || ""]
+                            : (quote?.negotiated_price !== undefined ? quote.negotiated_price : quotedPrice);
+                          const total = (negPrice && negPrice > 0 ? negPrice : quotedPrice) * row.quantity;
+
+                          return (
+                            <Fragment key={v.submission_id}>
+                              <td className="px-3 py-2.5 text-right font-mono border-l border-slate-200">
+                                ₹{quotedPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-2 py-2 text-right bg-blue-50/50">
+                                <input
+                                  type="number"
+                                  value={negPrice !== undefined ? negPrice : ""}
+                                  onChange={(e) =>
+                                    quote?.submission_item_id &&
+                                    handleNegotiatedPriceChange(v.submission_id, quote.submission_item_id, e.target.value)
+                                  }
+                                  placeholder={String(quotedPrice)}
+                                  className="w-24 text-right px-2 py-1 bg-white border border-slate-300 rounded font-mono text-xs focus:ring-2 focus:ring-blue-500"
+                                />
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">
+                                ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </Fragment>
+                          );
+                        })}
+                      </tr>
+                    ))}
+
+                  {/* Grand Total Row */}
+                  <tr className="bg-slate-900 text-white font-black text-xs border-t-2 border-slate-950">
+                    <td colSpan={3} className="px-4 py-3.5 text-right uppercase text-amber-400 tracking-wider">
+                      Grand Total Quoted:
+                    </td>
+                    {data.vendors.map((v) => (
+                      <Fragment key={v.submission_id}>
+                        <td className="border-l border-slate-700"></td>
+                        <td></td>
+                        <td
+                          className={`px-3 py-3.5 text-right font-mono font-black text-sm ${
+                            v.l_rank === "L1" ? "bg-[#FEF08A] text-slate-950" : "text-white"
+                          }`}
+                        >
+                          ₹{v.grand_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                      </Fragment>
+                    ))}
+                  </tr>
+
+                  {/* PART 3: COMMERCIAL TERMS MATRIX */}
+                  <tr className="bg-slate-800 text-white font-black uppercase text-xs">
+                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 tracking-wider">
+                      Part 3: Commercial Terms & Scope Conditions
+                    </td>
+                  </tr>
+
+                  {/* Terms rows */}
+                  {[
+                    { label: "Payment Terms (SITC / Installation)", key: "payment_terms_sitc", fallback: "30 Days after installation" },
+                    { label: "Payment Terms (Gas Supply)", key: "payment_terms_gas", fallback: "30 Days against monthly invoice" },
+                    { label: "Delivery Lead Time", key: "delivery_time", fallback: "4 to 6 Weeks" },
+                    { label: "Agreement Tenure", key: "agreement_tenure", fallback: "10 Years" },
+                    { label: "Lock-in Period", key: "lock_in_period", fallback: "10 Years" },
+                    { label: "Scope of Civil Work", key: "civil_work_scope", fallback: "Hospital Scope" },
+                    { label: "Price Escalation Clause", key: "price_escalation", fallback: "Fixed for 2 years, 5% Y on Y" },
+                    { label: "Mode of Delivery", key: "mode_of_delivery", fallback: "Weighment Basis" },
+                    { label: "Minimum Expected Volume", key: "minimum_expected_volume", fallback: "Review after 2.5 Years" },
+                  ].map((term, i) => (
+                    <tr key={term.key} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                      <td colSpan={3} className="px-4 py-2.5 font-bold text-slate-700 border-r border-slate-200">
+                        {term.label}:
+                      </td>
+                      {data.vendors.map((v) => {
+                        const val = (v as any)[term.key] || (v as any)[term.key.replace("payment_terms_sitc", "payment_terms")] || term.fallback;
+                        return (
+                          <td key={v.submission_id} colSpan={3} className="px-4 py-2.5 text-center border-l border-slate-200 font-medium text-slate-800">
+                            {val}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+
+                  {/* PART 4: RATINGS & RANKINGS */}
+                  <tr className="bg-slate-800 text-white font-black uppercase text-xs">
+                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 tracking-wider">
+                      Part 4: Technical & Commercial Ratings
+                    </td>
+                  </tr>
+                  <tr className="bg-white border-b border-slate-200">
+                    <td colSpan={3} className="px-4 py-3 font-bold text-slate-700 border-r border-slate-200">
+                      Technical Evaluation Rating:
+                    </td>
+                    {data.vendors.map((v) => (
+                      <td key={v.submission_id} colSpan={3} className="px-4 py-3 text-center border-l border-slate-200 font-bold text-emerald-700">
+                        Qualified (1)
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="bg-white border-b-2 border-slate-300">
+                    <td colSpan={3} className="px-4 py-3 font-bold text-slate-900 border-r border-slate-200">
+                      Commercial Rating (Ranking):
+                    </td>
+                    {data.vendors.map((v) => (
+                      <td
+                        key={v.submission_id}
+                        colSpan={3}
+                        className={`px-4 py-3 text-center border-l border-slate-200 font-black text-sm ${
+                          v.l_rank === "L1"
+                            ? "bg-[#FEF08A] text-slate-950 font-black"
+                            : "bg-slate-50 text-slate-800"
+                        }`}
+                      >
+                        {v.l_rank} {v.l_rank === "L1" && "(Lowest Quoted Bidder)"}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Signature Block (Mirroring Bottom of Comparative Statement of LMO.xlsx) */}
+            <div className="p-8 bg-slate-50 border-t border-slate-200">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-6">
+                Official Sign-off & Purchase Committee Approvals
+              </span>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+                <div className="border-t-2 border-slate-300 pt-3">
+                  <span className="text-xs font-bold text-slate-800 block">Prepared By</span>
+                  <span className="text-[10px] text-slate-500 block">Procurement Officer</span>
+                </div>
+                <div className="border-t-2 border-slate-300 pt-3">
+                  <span className="text-xs font-bold text-slate-800 block">Checked By</span>
+                  <span className="text-[10px] text-slate-500 block">Biomedical Engineer / MGPS</span>
+                </div>
+                <div className="border-t-2 border-slate-300 pt-3">
+                  <span className="text-xs font-bold text-slate-800 block">Verified By</span>
+                  <span className="text-[10px] text-slate-500 block">Chief Financial Officer (CFO)</span>
+                </div>
+                <div className="border-t-2 border-slate-300 pt-3">
+                  <span className="text-xs font-bold text-slate-800 block">Approved By</span>
+                  <span className="text-[10px] text-slate-500 block">Director / Purchase Committee</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: EXECUTIVE ADVISORY & QCBS COMPOSITE SCORING */}

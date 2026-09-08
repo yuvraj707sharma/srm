@@ -89,6 +89,7 @@ class BOQCreatePayload(BaseModel):
     tender_number: Optional[str] = None
     department: Optional[str] = None
     description: Optional[str] = None
+    boq_type: Optional[str] = "COMMERCIAL"  # TECHNICAL, COMMERCIAL, TECHNOCOMMERCIAL
     custom_columns: Optional[List[str]] = []
     items: List[ItemPayload]
     target_audience: Optional[str] = "ALL_APPROVED"  # ALL_APPROVED | SELECTED_VENDORS
@@ -97,6 +98,7 @@ class BOQCreatePayload(BaseModel):
     allow_download: Optional[bool] = True
     publish_now: Optional[bool] = False
     document_version_id: Optional[str] = None
+    extracted_data: Optional[Dict[str, Any]] = None
 
 class PublishPayload(BaseModel):
     target_audience: str = "ALL_APPROVED"  # ALL_APPROVED | SELECTED_VENDORS
@@ -121,6 +123,7 @@ class NegotiationPayload(BaseModel):
 @router.post("/extract")
 async def extract_boq_from_file(
     file: UploadFile = File(...),
+    boq_type: str = Form("COMMERCIAL"),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
@@ -147,11 +150,12 @@ async def extract_boq_from_file(
             raise HTTPException(status_code=400, detail="Could not extract readable text from uploaded file.")
         
         # 3. Call AI with retry
-        extracted_data = await extract_boq_with_gemini(raw_text)
+        extracted_data = await extract_boq_with_gemini(raw_text, boq_type=boq_type)
         return {
             "status": "success",
             "filename": file.filename,
             "document_version_id": doc_version.id,
+            "boq_type": boq_type,
             "data": extracted_data
         }
     except HTTPException:
@@ -159,6 +163,102 @@ async def extract_boq_from_file(
     except Exception as e:
         logger.error(f"Error extracting BOQ from file {file.filename}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"AI extraction failed: {str(e)}")
+
+
+@router.post("/quick-upload-publish")
+async def quick_upload_and_publish(
+    file: UploadFile = File(...),
+    boq_type: str = Form("COMMERCIAL"),
+    title: Optional[str] = Form(None),
+    deadline_days: int = Form(7),
+    target_audience: str = Form("ALL_APPROVED"),
+    publish_now: bool = Form(True),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """
+    Formless BOQ Creation: Admin uploads document, Gemini AI extracts all items, 
+    one-time charges, and commercial terms, stores everything, and immediately publishes.
+    No manual form filling required!
+    """
+    try:
+        content_bytes = await file.read()
+        await file.seek(0)
+        
+        # 1. Save file
+        doc_service = DocumentService(db, LocalStorageService())
+        doc_version = await doc_service.upload_document(
+            vendor_organization_id=None,
+            document_type="BOQ_ADMIN_SOURCE",
+            file=file,
+            uploaded_by_user_id=admin.id
+        )
+        
+        # 2. Extract content text
+        raw_text = extract_content_from_file(content_bytes, file.filename)
+        if not raw_text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract readable text from uploaded file.")
+            
+        # 3. Gemini extraction
+        extracted_data = await extract_boq_with_gemini(raw_text, boq_type=boq_type)
+        
+        now = datetime.now(timezone.utc)
+        deadline = now + timedelta(days=deadline_days) if publish_now and deadline_days else None
+        
+        boq_title = title or extracted_data.get("title") or file.filename.rsplit(".", 1)[0].replace("_", " ")
+        tender_no = f"JECRC-{boq_type[:3].upper()}-{now.strftime('%Y%m%d%H%M')}"
+        
+        new_boq = BOQ(
+            title=boq_title,
+            tender_number=tender_no,
+            department=extracted_data.get("department") or "Procurement",
+            description=extracted_data.get("description") or f"Automated AI-ingested {boq_type} Tender from {file.filename}",
+            status="PUBLISHED" if publish_now else "DRAFT",
+            boq_type=boq_type,
+            published_at=now if publish_now else None,
+            deadline_at=deadline,
+            target_audience=target_audience,
+            allow_download=True,
+            custom_columns_json=json.dumps(extracted_data.get("custom_columns") or []),
+            extracted_data_json=json.dumps(extracted_data),
+            document_version_id=doc_version.id
+        )
+        db.add(new_boq)
+        await db.flush()
+        
+        # Add extracted items
+        for item_data in extracted_data.get("items", []):
+            boq_item = BOQItem(
+                boq_id=new_boq.id,
+                item_code=item_data.get("item_code"),
+                item_name=item_data.get("item_name") or "Item",
+                specifications=item_data.get("specifications"),
+                quantity=float(item_data.get("quantity") or 1.0),
+                uom=item_data.get("uom") or "Nos",
+                category=item_data.get("category"),
+                target_price=item_data.get("target_price"),
+                attributes_json=json.dumps(item_data.get("attributes") or {})
+            )
+            db.add(boq_item)
+            
+        await db.commit()
+        
+        if publish_now:
+            await _notify_vendors_for_boq(db, new_boq)
+            
+        return {
+            "status": "success",
+            "message": f"BOQ successfully created and {'published' if publish_now else 'saved as draft'}.",
+            "boq_id": new_boq.id,
+            "title": new_boq.title,
+            "items_count": len(extracted_data.get("items", [])),
+            "boq_type": boq_type
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Quick upload & publish failed for {file.filename}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process BOQ: {str(e)}")
 
 
 @router.post("/upload-document")
@@ -232,6 +332,7 @@ async def list_boqs(
             "title": b.title,
             "department": b.department,
             "description": b.description,
+            "boq_type": getattr(b, "boq_type", "COMMERCIAL") or "COMMERCIAL",
             "status": "LOCKED" if (b.status == "PUBLISHED" and is_deadline_passed) else b.status,
             "published_at": b.published_at.isoformat() if b.published_at else None,
             "deadline_at": b.deadline_at.isoformat() if b.deadline_at else None,
@@ -267,11 +368,13 @@ async def create_boq(
         department=payload.department,
         description=payload.description,
         status="PUBLISHED" if payload.publish_now else "DRAFT",
+        boq_type=payload.boq_type or "COMMERCIAL",
         published_at=now if payload.publish_now else None,
         deadline_at=deadline,
         target_audience=payload.target_audience or "ALL_APPROVED",
         allow_download=payload.allow_download if payload.allow_download is not None else True,
         custom_columns_json=json.dumps(payload.custom_columns) if payload.custom_columns else "[]",
+        extracted_data_json=json.dumps(payload.extracted_data) if payload.extracted_data else None,
         document_version_id=payload.document_version_id
     )
     db.add(new_boq)
@@ -350,6 +453,9 @@ async def get_boq_detail(
         "title": boq.title,
         "department": boq.department,
         "description": boq.description,
+        "boq_type": getattr(boq, "boq_type", "COMMERCIAL") or "COMMERCIAL",
+        "document_version_id": boq.document_version_id,
+        "extracted_data": json.loads(boq.extracted_data_json) if getattr(boq, "extracted_data_json", None) else None,
         "status": "LOCKED" if (boq.status == "PUBLISHED" and is_locked) else boq.status,
         "published_at": boq.published_at.isoformat() if boq.published_at else None,
         "deadline_at": boq.deadline_at.isoformat() if boq.deadline_at else None,
@@ -390,7 +496,11 @@ async def get_boq_detail(
                 "status": s.status,
                 "submitted_at": s.submitted_at.isoformat() if s.submitted_at else None,
                 "grand_total": s.grand_total,
-                "submission_type": s.submission_type
+                "submission_type": s.submission_type,
+                "model_no": getattr(s, "model_no", None),
+                "tank_capacity_location": getattr(s, "tank_capacity_location", None),
+                "document_version_id": s.document_version_id,
+                "extracted_data": json.loads(s.extracted_data_json) if getattr(s, "extracted_data_json", None) else None
             }
             for s in boq.submissions
         ]
@@ -495,6 +605,33 @@ async def update_boq_deadline(
 
     await db.commit()
     return {"status": "success", "deadline_at": boq.deadline_at.isoformat()}
+
+
+@router.post("/{boq_id}/close")
+async def close_boq(
+    boq_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """
+    Manually close tender submissions early before deadline. Sets status to LOCKED and deadline to now.
+    """
+    stmt = select(BOQ).where(BOQ.id == boq_id)
+    res = await db.execute(stmt)
+    boq = res.scalar_one_or_none()
+    if not boq:
+        raise HTTPException(status_code=404, detail="BOQ not found")
+        
+    now = datetime.now(timezone.utc)
+    boq.status = "LOCKED"
+    boq.deadline_at = now
+    await db.commit()
+    return {
+        "status": "success",
+        "message": "BOQ closed successfully. Tender submissions are now locked for comparison.",
+        "status_code": "LOCKED",
+        "closed_at": now.isoformat()
+    }
 
 
 @router.get("/{boq_id}/comparative-statement")

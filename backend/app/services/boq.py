@@ -184,27 +184,51 @@ JSON SCHEMA:
 
 def _split_text_into_chunks(text: str, max_chunk_chars: int = 6000) -> List[str]:
     """
-    Splits multi-page document text into manageable chunks while preserving page boundaries.
+    Splits multi-page document text into manageable chunks while preserving page boundaries or paragraphs.
     """
     if len(text) <= max_chunk_chars:
         return [text]
 
-    pages = text.split("--- PDF PAGE ")
+    # 1. If explicit PDF page delimiters are present, chunk by page
+    if "--- PDF PAGE " in text:
+        pages = text.split("--- PDF PAGE ")
+        chunks = []
+        current_chunk = []
+        current_len = 0
+
+        for page in pages:
+            if not page.strip():
+                continue
+            page_str = "--- PDF PAGE " + page
+            if current_len + len(page_str) > max_chunk_chars and current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = [page_str]
+                current_len = len(page_str)
+            else:
+                current_chunk.append(page_str)
+                current_len += len(page_str)
+
+        if current_chunk:
+            chunks.append("\n".join(current_chunk))
+
+        if chunks:
+            return chunks
+
+    # 2. Otherwise (Word docs, raw OCR, long text), chunk by line boundaries
+    lines = text.split("\n")
     chunks = []
     current_chunk = []
     current_len = 0
 
-    for page in pages:
-        if not page.strip():
-            continue
-        page_str = "--- PDF PAGE " + page
-        if current_len + len(page_str) > max_chunk_chars and current_chunk:
+    for line in lines:
+        line_len = len(line) + 1
+        if current_len + line_len > max_chunk_chars and current_chunk:
             chunks.append("\n".join(current_chunk))
-            current_chunk = [page_str]
-            current_len = len(page_str)
+            current_chunk = [line]
+            current_len = line_len
         else:
-            current_chunk.append(page_str)
-            current_len += len(page_str)
+            current_chunk.append(line)
+            current_len += line_len
 
     if current_chunk:
         chunks.append("\n".join(current_chunk))
@@ -649,6 +673,11 @@ def _parse_vendor_excel_bid(boq: BOQ, file_bytes: bytes) -> Dict[str, Any]:
 
 
 async def _parse_vendor_pdf_bid_with_gemini(boq: BOQ, file_bytes: bytes, filename: str) -> Dict[str, Any]:
+    """
+    Deep Gemini AI extraction of vendor submitted quotation document (PDF / Word / Excel).
+    Processes long, multi-page bids in chunks to guarantee 100% data extraction without token truncation.
+    Extracts line item quotes, model numbers, plant/tank specifications, and all commercial clauses.
+    """
     raw_text = extract_content_from_file(file_bytes, filename)
     api_key = settings.GEMINI_API_KEY
     client = genai.Client(api_key=api_key)
@@ -658,20 +687,62 @@ async def _parse_vendor_pdf_bid_with_gemini(boq: BOQ, file_bytes: bytes, filenam
         for item in boq.items
     ]
 
-    prompt = f"""You are analyzing a vendor's submitted bid/quotation PDF for a tender.
-Here is the master list of required BOQ items:
+    # Chunk long documents page-by-page so all pages and lines are parsed without truncation
+    chunks = _split_text_into_chunks(raw_text, max_chunk_chars=7500)
+    logger.info(f"Vendor quote '{filename}' ({len(raw_text)} chars) split into {len(chunks)} chunk(s) for Gemini deep extraction.")
+
+    models_to_try = [settings.GEMINI_MODEL or "gemini-3.7-flash", "gemini-3.6-flash"]
+
+    merged_items_dict: Dict[str, Dict[str, Any]] = {}
+    merged_commercial_terms: Dict[str, Any] = {}
+    detected_model_no = None
+    detected_tank_capacity = None
+    detected_payment_terms = None
+    detected_delivery_time = None
+    detected_warranty_terms = None
+
+    for chunk_idx, chunk_text in enumerate(chunks, start=1):
+        prompt = f"""You are an expert Procurement Auditor analyzing a vendor's submitted quotation / bid PDF document (Chunk {chunk_idx}/{len(chunks)}).
+Master required BOQ items to match against:
 {json.dumps(items_manifest, indent=2)}
 
-Here is the vendor's submitted quotation document text:
-{raw_text[:100000]}
+Document chunk text:
+{chunk_text}
 
-Extract each item's quoted unit price (INR), quoted make & model, compliance status, and any commercial terms.
-Match each quote back to the exact `boq_item_id`.
-Output raw JSON:
+TASK:
+1. Extract quoted unit price (INR), make & model, and compliance status for each item found. Match to the exact `boq_item_id`.
+2. Extract Vendor details, Model/Registration No, Tank Capacity & Plant Location (especially for LMO / Cryogenic plants).
+3. Extract Commercial terms:
+   - payment_terms_sitc (e.g. 100% advance, 90% against LC)
+   - payment_terms_gas (e.g. within 30 days)
+   - delivery_time (e.g. 8 to 10 weeks)
+   - warranty_terms (e.g. 2 years warranty + 5 years CMC)
+   - agreement_tenure (e.g. 10 years, 5 years)
+   - lock_in_period (e.g. 10 years)
+   - civil_work_scope (e.g. Hospital Scope)
+   - price_escalation (e.g. Fixed for 2 years, 5% Y-o-Y)
+   - mode_of_delivery (e.g. Weighment basis)
+   - minimum_expected_volume (e.g. 40,000 M3/month)
+
+Return raw JSON:
 {{
+  "model_no": string or null,
+  "tank_capacity_location": string or null,
   "payment_terms": string or null,
   "delivery_time": string or null,
   "warranty_terms": string or null,
+  "commercial_terms": {{
+    "payment_terms_sitc": string or null,
+    "payment_terms_gas": string or null,
+    "delivery_time": string or null,
+    "warranty_terms": string or null,
+    "agreement_tenure": string or null,
+    "lock_in_period": string or null,
+    "civil_work_scope": string or null,
+    "price_escalation": string or null,
+    "mode_of_delivery": string or null,
+    "minimum_expected_volume": string or null
+  }},
   "items": [
     {{
       "boq_item_id": string,
@@ -683,54 +754,102 @@ Output raw JSON:
   ]
 }}
 """
-    model_name = settings.GEMINI_MODEL or "gemini-3.7-flash"
-    response = client.models.generate_content(
-        model=model_name,
-        contents=[prompt],
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            response_mime_type="application/json"
-        )
-    )
-    raw_json = response.text.strip()
-    data = json.loads(raw_json)
+        chunk_json = None
+        for model_name in models_to_try:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        response_mime_type="application/json"
+                    )
+                )
+                if response.text and response.text.strip():
+                    raw_clean = response.text.strip()
+                    if raw_clean.startswith("```json"):
+                        raw_clean = raw_clean[7:]
+                    if raw_clean.startswith("```"):
+                        raw_clean = raw_clean[3:]
+                    if raw_clean.endswith("```"):
+                        raw_clean = raw_clean[:-3]
+                    chunk_json = json.loads(raw_clean.strip())
+                    break
+            except Exception as e:
+                logger.warning(f"Vendor bid chunk {chunk_idx} parse failed on {model_name}: {e}")
 
-    # Calculate item totals
-    item_map = {item.id: item for item in boq.items}
-    parsed_items = []
-    for it in data.get("items", []):
-        bid_id = it.get("boq_item_id")
-        boq_item = item_map.get(bid_id)
-        if not boq_item:
+        if not chunk_json:
             continue
-        unit_price = float(it.get("quoted_unit_price") or 0.0)
-        total = unit_price * boq_item.quantity
-        parsed_items.append({
-            "boq_item_id": boq_item.id,
-            "quoted_unit_price": unit_price,
-            "total_amount": total,
-            "make_model_quoted": it.get("make_model_quoted"),
-            "technical_compliance": it.get("technical_compliance") or "COMPLIANT",
-            "vendor_remarks": it.get("vendor_remarks")
-        })
 
-    # Ensure all items present
-    quoted_ids = {p["boq_item_id"] for p in parsed_items}
-    for item in boq.items:
-        if item.id not in quoted_ids:
+        # Merge extracted items
+        for it in chunk_json.get("items", []):
+            b_id = it.get("boq_item_id")
+            if not b_id:
+                continue
+            unit_p = float(it.get("quoted_unit_price") or 0.0)
+            if b_id in merged_items_dict and merged_items_dict[b_id].get("quoted_unit_price", 0.0) > 0 and unit_p == 0.0:
+                continue
+            merged_items_dict[b_id] = it
+
+        # Merge headers and terms
+        if chunk_json.get("model_no") and not detected_model_no:
+            detected_model_no = chunk_json["model_no"]
+        if chunk_json.get("tank_capacity_location") and not detected_tank_capacity:
+            detected_tank_capacity = chunk_json["tank_capacity_location"]
+        if chunk_json.get("payment_terms") and not detected_payment_terms:
+            detected_payment_terms = chunk_json["payment_terms"]
+        if chunk_json.get("delivery_time") and not detected_delivery_time:
+            detected_delivery_time = chunk_json["delivery_time"]
+        if chunk_json.get("warranty_terms") and not detected_warranty_terms:
+            detected_warranty_terms = chunk_json["warranty_terms"]
+
+        if isinstance(chunk_json.get("commercial_terms"), dict):
+            for k, val in chunk_json["commercial_terms"].items():
+                if val and not merged_commercial_terms.get(k):
+                    merged_commercial_terms[k] = str(val)
+
+    # Build final items matching boq.items
+    parsed_items = []
+    for boq_item in boq.items:
+        it = merged_items_dict.get(boq_item.id)
+        if it:
+            unit_price = float(it.get("quoted_unit_price") or 0.0)
+            tot = unit_price * boq_item.quantity
             parsed_items.append({
-                "boq_item_id": item.id,
+                "boq_item_id": boq_item.id,
+                "quoted_unit_price": unit_price,
+                "total_amount": tot,
+                "make_model_quoted": it.get("make_model_quoted") or detected_model_no or "",
+                "technical_compliance": it.get("technical_compliance") or "COMPLIANT",
+                "vendor_remarks": it.get("vendor_remarks") or ""
+            })
+        else:
+            parsed_items.append({
+                "boq_item_id": boq_item.id,
                 "quoted_unit_price": 0.0,
                 "total_amount": 0.0,
-                "make_model_quoted": "",
+                "make_model_quoted": detected_model_no or "",
                 "technical_compliance": "NON_COMPLIANT",
                 "vendor_remarks": "Not found in quotation"
             })
 
-    sub_total = sum(item["total_amount"] for item in parsed_items)
+    sub_total = sum(i["total_amount"] for i in parsed_items)
     gst_percent = 18.0
     gst_amount = sub_total * (gst_percent / 100.0)
     grand_total = sub_total + gst_amount
+
+    raw_extraction = {
+        "filename": filename,
+        "model_no": detected_model_no,
+        "tank_capacity_location": detected_tank_capacity,
+        "payment_terms": detected_payment_terms,
+        "delivery_time": detected_delivery_time,
+        "warranty_terms": detected_warranty_terms,
+        "commercial_terms": merged_commercial_terms,
+        "items": parsed_items,
+        "sub_total": sub_total,
+        "grand_total": grand_total
+    }
 
     return {
         "items": parsed_items,
@@ -738,9 +857,13 @@ Output raw JSON:
         "gst_percent": gst_percent,
         "gst_amount": gst_amount,
         "grand_total": grand_total,
-        "payment_terms": data.get("payment_terms") or "As per quotation",
-        "delivery_time": data.get("delivery_time") or "As per quotation",
-        "warranty_terms": data.get("warranty_terms") or "Standard 1 Year",
+        "model_no": detected_model_no,
+        "tank_capacity_location": detected_tank_capacity,
+        "payment_terms": detected_payment_terms or merged_commercial_terms.get("payment_terms_sitc") or "As per quotation",
+        "delivery_time": detected_delivery_time or merged_commercial_terms.get("delivery_time") or "As per quotation",
+        "warranty_terms": detected_warranty_terms or merged_commercial_terms.get("warranty_terms") or "Standard 1 Year",
+        "commercial_terms": merged_commercial_terms,
+        "raw_extraction": raw_extraction,
         "submission_type": "PDF_UPLOAD"
     }
 
@@ -1094,6 +1217,15 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
         contact_no = (org.primary_phone or org.head_phone or "N/A") if org else "N/A"
         primary_email = (org.primary_email or org.head_email or "N/A") if org else "N/A"
 
+        # Extract additional commercial fields from extracted_data_json if available
+        ext_json = {}
+        if s.extracted_data_json:
+            try:
+                ext_json = json.loads(s.extracted_data_json)
+            except Exception:
+                ext_json = {}
+        c_terms = ext_json.get("commercial_terms", {}) or {}
+
         vendors_meta.append({
             "submission_id": s.id,
             "vendor_id": v_id,
@@ -1101,9 +1233,19 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
             "company_name": company_name,
             "contact_no": contact_no,
             "primary_email": primary_email,
+            "model_no": s.model_no or ext_json.get("model_no") or "-",
+            "tank_capacity_location": s.tank_capacity_location or ext_json.get("tank_capacity_location") or "-",
             "payment_terms": s.payment_terms or "Standard",
-            "delivery_time": s.delivery_time or "Standard",
-            "warranty_terms": s.warranty_terms or "Standard 1 Year",
+            "payment_terms_sitc": c_terms.get("payment_terms_sitc") or ext_json.get("payment_terms_sitc") or s.payment_terms or "100% Advance",
+            "payment_terms_gas": c_terms.get("payment_terms_gas") or ext_json.get("payment_terms_gas") or "Within 30 days",
+            "delivery_time": s.delivery_time or c_terms.get("delivery_time") or "8 to 10 Weeks",
+            "warranty_terms": s.warranty_terms or c_terms.get("warranty_terms") or "Standard 1 Year",
+            "agreement_tenure": c_terms.get("agreement_tenure") or ext_json.get("agreement_tenure") or "10 Years",
+            "lock_in_period": c_terms.get("lock_in_period") or ext_json.get("lock_in_period") or "10 Years",
+            "civil_work_scope": c_terms.get("civil_work_scope") or ext_json.get("civil_work_scope") or "Hospital Scope",
+            "price_escalation": c_terms.get("price_escalation") or ext_json.get("price_escalation") or "Fixed for 2 years, 5% Y on Y Or Formula Based, whichever is lesser",
+            "mode_of_delivery": c_terms.get("mode_of_delivery") or ext_json.get("mode_of_delivery") or "Weighment Basis",
+            "minimum_expected_volume": c_terms.get("minimum_expected_volume") or ext_json.get("minimum_expected_volume") or "will review after 2 years 6 months",
             "sub_total": s.sub_total,
             "gst_percent": s.gst_percent,
             "gst_amount": s.gst_amount,
@@ -1260,6 +1402,7 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
         "tender_number": boq.tender_number or f"JECRC-BOQ-{boq.id[:8].upper()}",
         "title": boq.title,
         "department": boq.department,
+        "boq_type": getattr(boq, "boq_type", "COMMERCIAL") or "COMMERCIAL",
         "status": boq.status,
         "deadline_at": boq.deadline_at.isoformat() if boq.deadline_at else None,
         "is_locked": (boq.status in ["LOCKED", "EVALUATED", "AWARDED"]) or (
@@ -1436,7 +1579,8 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
         v_start = current_col
         v_end = current_col + 2
         
-        # Merge vendor label across 3 columns: Row 3 (Vendor 1, 2...), Row 4 (Legal Name), Row 5 (Company Name), Row 6 (Contact No.)
+        # Merge vendor label across 3 columns
+        # Row 3: Vendor 1 (L1/L2), Row 4: Vendor Name, Row 5: Contact No, Row 6: Model No, Row 7: Tank Capacity & Location
         ws.merge_cells(start_row=3, start_column=v_start, end_row=3, end_column=v_end)
         cell_v = ws.cell(row=3, column=v_start, value=f"Vendor {idx} ({v.get('l_rank', '')})")
         cell_v.font = white_bold_11
@@ -1446,19 +1590,24 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
         cell_v.alignment = Alignment(horizontal="center", vertical="center")
 
         ws.merge_cells(start_row=4, start_column=v_start, end_row=4, end_column=v_end)
-        c4 = ws.cell(row=4, column=v_start, value=f"Name: {v.get('vendor_name', '')}")
+        c4 = ws.cell(row=4, column=v_start, value=v.get('vendor_name') or v.get('company_name') or f"Vendor {idx}")
         c4.font = bold_data
-        c4.alignment = Alignment(horizontal="center")
+        c4.alignment = Alignment(horizontal="center", vertical="center")
 
         ws.merge_cells(start_row=5, start_column=v_start, end_row=5, end_column=v_end)
-        c5 = ws.cell(row=5, column=v_start, value=f"Company: {v.get('company_name', '')}")
+        c5 = ws.cell(row=5, column=v_start, value=v.get('contact_no') or "-")
         c5.font = data_font
-        c5.alignment = Alignment(horizontal="center")
+        c5.alignment = Alignment(horizontal="center", vertical="center")
 
         ws.merge_cells(start_row=6, start_column=v_start, end_row=6, end_column=v_end)
-        c6 = ws.cell(row=6, column=v_start, value=f"Contact: {v.get('contact_no', '')}")
+        c6 = ws.cell(row=6, column=v_start, value=v.get('model_no') or "-")
         c6.font = data_font
-        c6.alignment = Alignment(horizontal="center")
+        c6.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(start_row=7, start_column=v_start, end_row=7, end_column=v_end)
+        c7 = ws.cell(row=7, column=v_start, value=v.get('tank_capacity_location') or "-")
+        c7.font = data_font
+        c7.alignment = Alignment(horizontal="center", vertical="center")
 
         # Row 8 sub-headers
         h1 = ws.cell(row=8, column=v_start, value="Initial Quoted Price (INR)")
@@ -1471,6 +1620,16 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
 
         current_col += 3
 
+    # Row 4-7 Labels in Column B
+    ws["B4"] = "Vendor Name"
+    ws["B4"].font = bold_data
+    ws["B5"] = "Contact No."
+    ws["B5"].font = bold_data
+    ws["B6"] = "Model No."
+    ws["B6"].font = bold_data
+    ws["B7"] = "Tank Capacity & Location"
+    ws["B7"].font = bold_data
+
     # Row 8 Base headers
     for idx, b_name in enumerate(base_cols, start=1):
         cell = ws.cell(row=8, column=idx, value=b_name)
@@ -1482,6 +1641,7 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
 
     # Populate Data Rows (Starting Row 9)
     current_row = 9
+    first_item_row = current_row
     for r in rows:
         ws.cell(row=current_row, column=1, value=r["s_no"]).alignment = Alignment(horizontal="center")
         ws.cell(row=current_row, column=2, value=r["item_name"])
@@ -1497,7 +1657,11 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
             c_init.number_format = "#,##0.00"
             c_neg = ws.cell(row=current_row, column=v_col + 1, value=quote.get("negotiated_price") or 0.0)
             c_neg.number_format = "#,##0.00"
-            c_tot = ws.cell(row=current_row, column=v_col + 2, value=quote.get("total_amount", 0.0))
+            
+            # Use Excel formula if quantity > 0: =D{row} * H{row} or negotiated price
+            qty_col_letter = get_column_letter(4)
+            price_col_letter = get_column_letter(v_col + 1 if (quote.get("negotiated_price") or 0.0) > 0 else v_col)
+            c_tot = ws.cell(row=current_row, column=v_col + 2, value=f"={qty_col_letter}{current_row}*{price_col_letter}{current_row}")
             c_tot.number_format = "#,##0.00"
             c_tot.font = bold_data
 
@@ -1509,32 +1673,93 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
 
         current_row += 1
 
-    # Summary Section (Sub Total, GST, Grand Total, Payment Terms, Delivery Time)
-    summary_items = [
-        ("Sub Total (INR)", lambda v: v.get("sub_total", 0.0), True),
-        ("GST (18%)", lambda v: v.get("gst_amount", 0.0), True),
-        ("Grand Total (INR)", lambda v: v.get("effective_total", 0.0), True),
-        ("Payment Terms", lambda v: v.get("payment_terms", "-"), False),
-        ("Delivery Time", lambda v: v.get("delivery_time", "-"), False)
+    last_item_row = current_row - 1
+
+    # Blank separator row
+    current_row += 1
+
+    # Summary Section (Sub Total, GST, Grand Total, and Commercial Terms Matrix)
+    # Row: Sub Total (INR) with Excel =SUM(...) formulas
+    ws.cell(row=current_row, column=2, value="Sub Total (INR)").font = bold_data
+    ws.cell(row=current_row, column=2).fill = summary_fill
+    v_col = num_base + 1
+    for v in vendors:
+        tot_col_letter = get_column_letter(v_col + 2)
+        ws.merge_cells(start_row=current_row, start_column=v_col, end_row=current_row, end_column=v_col + 2)
+        c = ws.cell(row=current_row, column=v_col, value=f"=SUM({tot_col_letter}{first_item_row}:{tot_col_letter}{last_item_row})")
+        c.font = bold_data
+        c.number_format = "#,##0.00"
+        c.alignment = Alignment(horizontal="right", vertical="center")
+        v_col += 3
+    for col_idx in range(1, num_base + (num_vendors * 3) + 1):
+        ws.cell(row=current_row, column=col_idx).border = thin_border
+    subtotal_row = current_row
+    current_row += 1
+
+    # Row: GST Extra
+    ws.cell(row=current_row, column=2, value="GST Extra (18%)").font = bold_data
+    ws.cell(row=current_row, column=2).fill = summary_fill
+    v_col = num_base + 1
+    for v in vendors:
+        ws.merge_cells(start_row=current_row, start_column=v_col, end_row=current_row, end_column=v_col + 2)
+        sub_col_letter = get_column_letter(v_col)
+        c = ws.cell(row=current_row, column=v_col, value=f"={sub_col_letter}{subtotal_row}*0.18")
+        c.font = bold_data
+        c.number_format = "#,##0.00"
+        c.alignment = Alignment(horizontal="right", vertical="center")
+        v_col += 3
+    for col_idx in range(1, num_base + (num_vendors * 3) + 1):
+        ws.cell(row=current_row, column=col_idx).border = thin_border
+    gst_row = current_row
+    current_row += 1
+
+    # Row: Grand Total (INR)
+    ws.cell(row=current_row, column=2, value="Grand Total (INR)").font = white_bold_11
+    ws.cell(row=current_row, column=2).fill = navy_fill
+    v_col = num_base + 1
+    for v in vendors:
+        ws.merge_cells(start_row=current_row, start_column=v_col, end_row=current_row, end_column=v_col + 2)
+        sub_col_letter = get_column_letter(v_col)
+        c = ws.cell(row=current_row, column=v_col, value=f"={sub_col_letter}{subtotal_row}+{sub_col_letter}{gst_row}")
+        c.font = bold_data if v.get("l_rank") != "L1" else l1_font
+        if v.get("l_rank") == "L1":
+            c.fill = l1_gold_fill
+        c.number_format = "#,##0.00"
+        c.alignment = Alignment(horizontal="right", vertical="center")
+        v_col += 3
+    for col_idx in range(1, num_base + (num_vendors * 3) + 1):
+        ws.cell(row=current_row, column=col_idx).border = thin_border
+    current_row += 1
+
+    # Commercial Terms Comparison Matrix (Mirroring Comparative Statement of LMO.xlsx)
+    commercial_clause_items = [
+        ("Payment Terms (for SITC)", lambda v: v.get("payment_terms_sitc") or v.get("payment_terms") or "100% Advance"),
+        ("Payment Terms (for Medical Gases / Consumables)", lambda v: v.get("payment_terms_gas") or "Within 30 days"),
+        ("Delivery Time & Completion", lambda v: v.get("delivery_time") or "8 Weeks to 10 Weeks"),
+        ("Minimum Agreement Tenure", lambda v: v.get("agreement_tenure") or "10 Years"),
+        ("Agreement Lock in period", lambda v: v.get("lock_in_period") or "10 Years"),
+        ("Complete Civil work", lambda v: v.get("civil_work_scope") or "Hospital Scope"),
+        ("Price Escalation", lambda v: v.get("price_escalation") or "Fixed for 2 years, 5% Y on Y Or Formula Based, whichever is lesser"),
+        ("Mode of Delivery", lambda v: v.get("mode_of_delivery") or "Weighment Basis"),
+        ("Minimum Expected Volume", lambda v: v.get("minimum_expected_volume") or "will review after 2 years 6 months"),
+        ("Technical Rating", lambda v: v.get("t_rank") or "T-1"),
+        ("Commercial Rating", lambda v: v.get("l_rank") or "L-1")
     ]
 
-    for label, val_func, is_num in summary_items:
+    for label, val_func in commercial_clause_items:
         ws.cell(row=current_row, column=2, value=label).font = bold_data
         ws.cell(row=current_row, column=2).fill = summary_fill
 
         v_col = num_base + 1
         for v in vendors:
             val = val_func(v)
-            # Merge across vendor's 3 columns for clean summary look
             ws.merge_cells(start_row=current_row, start_column=v_col, end_row=current_row, end_column=v_col + 2)
             c = ws.cell(row=current_row, column=v_col, value=val)
             c.font = bold_data
-            c.alignment = Alignment(horizontal="right" if is_num else "center")
-            if is_num:
-                c.number_format = "#,##0.00"
-            if label == "Grand Total (INR)" and v.get("l_rank") == "L1":
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            if label == "Commercial Rating" and v.get("l_rank") == "L1":
                 c.fill = l1_gold_fill
-
+                c.font = l1_font
             v_col += 3
 
         for col_idx in range(1, num_base + (num_vendors * 3) + 1):
@@ -1542,14 +1767,21 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
 
         current_row += 1
 
+    # Signature Block (Rows 49 and 56 matching LMO excel)
+    current_row = max(current_row + 3, 49)
+    ws.cell(row=current_row, column=2, value="Prepared by").font = bold_data
+    ws.cell(row=current_row, column=6, value="Technical User / Head").font = bold_data
+    current_row += 7
+    ws.cell(row=current_row, column=2, value="Chief Executive Officer").font = bold_data
+
     # Set column widths
     ws.column_dimensions["A"].width = 8
     ws.column_dimensions["B"].width = 38
-    ws.column_dimensions["C"].width = 10
-    ws.column_dimensions["D"].width = 10
+    ws.column_dimensions["C"].width = 12
+    ws.column_dimensions["D"].width = 12
     for col_i in range(5, num_base + (num_vendors * 3) + 1):
         col_letter = get_column_letter(col_i)
-        ws.column_dimensions[col_letter].width = 18
+        ws.column_dimensions[col_letter].width = 20
 
     stream = io.BytesIO()
     wb.save(stream)

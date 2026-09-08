@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.boq import BOQ, BOQItem, BOQSubmission, BOQSubmissionItem, BOQVendorTarget
 from app.models.document import DocumentVersion
 from app.services.storage.local import LocalStorageService
+from app.services.document import DocumentService
 from app.services.boq import (
     generate_boq_excel_template,
     parse_vendor_submission_file
@@ -123,6 +124,7 @@ async def list_available_tenders(
             "title": b.title,
             "department": b.department,
             "description": b.description,
+            "boq_type": getattr(b, "boq_type", "COMMERCIAL") or "COMMERCIAL",
             "status": "LOCKED" if is_deadline_passed else b.status,
             "published_at": b.published_at.isoformat() if b.published_at else None,
             "deadline_at": b.deadline_at.isoformat() if b.deadline_at else None,
@@ -198,6 +200,10 @@ async def get_tender_detail(
             "payment_terms": sub.payment_terms,
             "delivery_time": sub.delivery_time,
             "warranty_terms": sub.warranty_terms,
+            "model_no": getattr(sub, "model_no", None),
+            "tank_capacity_location": getattr(sub, "tank_capacity_location", None),
+            "document_version_id": sub.document_version_id,
+            "extracted_data": json.loads(sub.extracted_data_json) if getattr(sub, "extracted_data_json", None) else None,
             "items": [
                 {
                     "submission_item_id": si.id,
@@ -218,6 +224,7 @@ async def get_tender_detail(
         "title": boq.title,
         "department": boq.department,
         "description": boq.description,
+        "boq_type": getattr(boq, "boq_type", "COMMERCIAL") or "COMMERCIAL",
         "status": "LOCKED" if is_deadline_passed else boq.status,
         "published_at": boq.published_at.isoformat() if boq.published_at else None,
         "deadline_at": boq.deadline_at.isoformat() if boq.deadline_at else None,
@@ -432,6 +439,17 @@ async def upload_bid_file(
         )
 
     file_bytes = await file.read()
+    await file.seek(0)
+    
+    # 3. Store uploaded quotation file in Document storage
+    doc_service = DocumentService(db, LocalStorageService())
+    doc_ver = await doc_service.upload_document(
+        vendor_organization_id=vendor_org_id,
+        document_type="BOQ_VENDOR_BID",
+        file=file,
+        uploaded_by_user_id=user.id
+    )
+
     try:
         parsed_bid = await parse_vendor_submission_file(boq, file_bytes, file.filename)
     except Exception as e:
@@ -464,6 +482,10 @@ async def upload_bid_file(
     existing_sub.payment_terms = parsed_bid.get("payment_terms")
     existing_sub.delivery_time = parsed_bid.get("delivery_time")
     existing_sub.warranty_terms = parsed_bid.get("warranty_terms")
+    existing_sub.model_no = parsed_bid.get("model_no")
+    existing_sub.tank_capacity_location = parsed_bid.get("tank_capacity_location")
+    existing_sub.document_version_id = doc_ver.id
+    existing_sub.extracted_data_json = json.dumps(parsed_bid.get("raw_extraction") or parsed_bid)
 
     for si in parsed_bid.get("items", []):
         item_obj = BOQSubmissionItem(
@@ -481,12 +503,125 @@ async def upload_bid_file(
 
     return {
         "status": "success",
-        "message": f"Quotation file '{file.filename}' processed and bid permanently locked.",
+        "message": f"Quotation file '{file.filename}' successfully processed by Gemini AI in chunks and bid locked.",
         "submission_id": existing_sub.id,
         "grand_total": existing_sub.grand_total,
         "items_extracted": len(parsed_bid.get("items", [])),
+        "document_version_id": doc_ver.id,
+        "model_no": existing_sub.model_no,
+        "tank_capacity_location": existing_sub.tank_capacity_location,
         "submitted_at": now.isoformat()
     }
+
+
+@router.get("/{boq_id}/my-quote")
+async def get_my_quote_details(
+    boq_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    vendor_org_id: str = Depends(get_vendor_org_id)
+):
+    """
+    Vendor views their submitted quotation details, uploaded document metadata, and full chunk-extracted AI intelligence.
+    """
+    stmt = (
+        select(BOQSubmission)
+        .options(selectinload(BOQSubmission.items).selectinload(BOQSubmissionItem.boq_item))
+        .where(
+            BOQSubmission.boq_id == boq_id,
+            BOQSubmission.vendor_organization_id == vendor_org_id
+        )
+    )
+    res = await db.execute(stmt)
+    sub = res.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="No submission found for this tender.")
+
+    extracted = json.loads(sub.extracted_data_json) if getattr(sub, "extracted_data_json", None) else None
+
+    # Get document version if available
+    doc_info = None
+    if sub.document_version_id:
+        res_doc = await db.execute(select(DocumentVersion).where(DocumentVersion.id == sub.document_version_id))
+        doc_ver = res_doc.scalar_one_or_none()
+        if doc_ver:
+            doc_info = {
+                "id": doc_ver.id,
+                "filename": doc_ver.original_filename,
+                "file_size": doc_ver.file_size_bytes,
+                "mime_type": doc_ver.mime_type,
+                "created_at": doc_ver.created_at.isoformat() if doc_ver.created_at else None
+            }
+
+    return {
+        "status": "success",
+        "submission_id": sub.id,
+        "submission_status": sub.status,
+        "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None,
+        "submission_type": sub.submission_type,
+        "grand_total": sub.grand_total,
+        "sub_total": sub.sub_total,
+        "gst_percent": sub.gst_percent,
+        "gst_amount": sub.gst_amount,
+        "model_no": getattr(sub, "model_no", None),
+        "tank_capacity_location": getattr(sub, "tank_capacity_location", None),
+        "payment_terms": sub.payment_terms,
+        "delivery_time": sub.delivery_time,
+        "warranty_terms": sub.warranty_terms,
+        "document": doc_info,
+        "extracted_intelligence": extracted,
+        "items": [
+            {
+                "submission_item_id": si.id,
+                "item_name": si.boq_item.item_name if si.boq_item else "Item",
+                "item_code": si.boq_item.item_code if si.boq_item else "",
+                "quantity": si.boq_item.quantity if si.boq_item else 1,
+                "uom": si.boq_item.uom if si.boq_item else "Nos",
+                "quoted_unit_price": si.quoted_unit_price,
+                "total_amount": si.total_amount,
+                "make_model_quoted": si.make_model_quoted,
+                "technical_compliance": si.technical_compliance,
+                "vendor_remarks": si.vendor_remarks
+            }
+            for si in sub.items
+        ]
+    }
+
+
+@router.get("/{boq_id}/submission-document")
+async def download_vendor_submission_document(
+    boq_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    vendor_org_id: str = Depends(get_vendor_org_id)
+):
+    """
+    Download the vendor's uploaded quotation document.
+    """
+    stmt = select(BOQSubmission).where(
+        BOQSubmission.boq_id == boq_id,
+        BOQSubmission.vendor_organization_id == vendor_org_id
+    )
+    res = await db.execute(stmt)
+    sub = res.scalar_one_or_none()
+    if not sub or not sub.document_version_id:
+        raise HTTPException(status_code=404, detail="No quotation document attached to your submission.")
+
+    res_doc = await db.execute(select(DocumentVersion).where(DocumentVersion.id == sub.document_version_id))
+    doc_ver = res_doc.scalar_one_or_none()
+    if not doc_ver:
+        raise HTTPException(status_code=404, detail="Document version not found.")
+
+    storage = LocalStorageService()
+    file_bytes = await storage.get(doc_ver.stored_key)
+    if not file_bytes:
+        raise HTTPException(status_code=404, detail="Quotation document file missing from storage.")
+
+    return StreamingResponse(
+        io.BytesIO(file_bytes),
+        media_type=doc_ver.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{doc_ver.original_filename}"'}
+    )
 
 
 @router.get("/{boq_id}/document")

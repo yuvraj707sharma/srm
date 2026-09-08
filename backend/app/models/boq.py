@@ -13,6 +13,7 @@ class BOQ(Base):
     department: Mapped[str | None] = mapped_column(String(128), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="DRAFT")  # DRAFT, PUBLISHED, LOCKED, EVALUATED, AWARDED, CANCELLED
+    boq_type: Mapped[str] = mapped_column(String(32), default="COMMERCIAL")  # TECHNICAL, COMMERCIAL, TECHNOCOMMERCIAL
     
     published_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -20,6 +21,7 @@ class BOQ(Base):
     allow_download: Mapped[bool] = mapped_column(Boolean, default=True)
     
     custom_columns_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # List of custom column names
+    extracted_data_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # Full Gemini extraction of original BOQ
     document_version_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("document_versions.id", ondelete="SET NULL"), nullable=True)
     
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -88,8 +90,11 @@ class BOQSubmission(Base):
     payment_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
     delivery_time: Mapped[str | None] = mapped_column(String(255), nullable=True)
     warranty_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    model_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tank_capacity_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     technical_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     technical_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extracted_data_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # Full Gemini extraction of vendor quote
     
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

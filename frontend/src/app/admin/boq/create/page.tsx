@@ -30,6 +30,9 @@ export default function CreateUniversalBOQPage() {
   // Step state: 1 = Ingestion / Upload Mode, 2 = Review Items & Dynamic Columns / Publishing Settings
   const [step, setStep] = useState<1 | 2>(1);
 
+  // BOQ Type: COMMERCIAL | TECHNICAL | TECHNOCOMMERCIAL
+  const [boqType, setBoqType] = useState<"COMMERCIAL" | "TECHNICAL" | "TECHNOCOMMERCIAL">("COMMERCIAL");
+
   // Ingestion State
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -60,6 +63,7 @@ export default function CreateUniversalBOQPage() {
 
   const directFileInputRef = useRef<HTMLInputElement>(null);
   const aiFileInputRef = useRef<HTMLInputElement>(null);
+  const formlessFileInputRef = useRef<HTMLInputElement>(null);
 
   // Load approved vendors for targeting
   useEffect(() => {
@@ -146,6 +150,7 @@ export default function CreateUniversalBOQPage() {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("boq_type", boqType);
 
       const res = await fetchApi("/api/v1/admin/boq/extract", {
         method: "POST",
@@ -174,6 +179,47 @@ export default function CreateUniversalBOQPage() {
       setStep(2);
     } catch (err: any) {
       setError(err.message || "Failed to extract BOQ.");
+    } finally {
+      setUploading(false);
+      setExtractionMsg(null);
+      setUploadMode(null);
+    }
+  };
+
+  // OPTION 3 (ZERO MANUAL FORM): 1-Click Formless AI Upload & Publish
+  const handleFormlessPublish = async (selectedFile: File, publishNow: boolean = true) => {
+    setFile(selectedFile);
+    setError(null);
+    setUploading(true);
+    setUploadMode("AI");
+    setExtractionMsg(
+      publishNow
+        ? "Gemini AI is digesting the whole tender document, extracting all clauses, and publishing live..."
+        : "Gemini AI is reading and saving extracted tender data to draft..."
+    );
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("boq_type", boqType);
+      formData.append("publish_now", publishNow ? "true" : "false");
+      formData.append("target_audience", targetAudience);
+      formData.append("deadline_days", String(deadlineDays));
+
+      const res = await fetchApi("/api/v1/admin/boq/quick-upload-publish", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Formless publish failed.");
+      }
+
+      const result = await res.json();
+      router.push(`/admin/boq/${result.boq_id}`);
+    } catch (err: any) {
+      setError(err.message || "Failed to process tender.");
     } finally {
       setUploading(false);
       setExtractionMsg(null);
@@ -272,6 +318,7 @@ export default function CreateUniversalBOQPage() {
         deadline_days: deadlineDays,
         allow_download: allowDownload,
         publish_now: publishNow,
+        boq_type: boqType,
         document_version_id: documentVersionId || undefined,
       };
 
@@ -340,6 +387,17 @@ export default function CreateUniversalBOQPage() {
       {/* Hidden File Inputs */}
       <input
         type="file"
+        ref={formlessFileInputRef}
+        accept=".pdf,.xlsx,.xls,.doc,.docx"
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            handleFormlessPublish(e.target.files[0], true);
+          }
+        }}
+        className="hidden"
+      />
+      <input
+        type="file"
         ref={directFileInputRef}
         accept=".pdf,.xlsx,.xls,.doc,.docx"
         onChange={(e) => {
@@ -361,9 +419,9 @@ export default function CreateUniversalBOQPage() {
         className="hidden"
       />
 
-      {/* STEP 1: 3 CREATION OPTIONS GRID */}
+      {/* STEP 1: 3 BOQ TYPES & CREATION OPTIONS */}
       {step === 1 && (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {uploading ? (
             <div className="bg-white rounded-2xl border-2 border-blue-200 p-12 text-center shadow-md flex flex-col items-center justify-center space-y-4">
               <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -374,112 +432,260 @@ export default function CreateUniversalBOQPage() {
               <span className="text-[11px] text-slate-400">Please wait while your document is being prepared.</span>
             </div>
           ) : (
-            <div>
-              <div className="text-center max-w-xl mx-auto mb-8">
-                <h2 className="text-lg font-bold text-slate-900">Select How You Want to Create This BOQ Tender</h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Upload files directly for vendor download, let AI extract line items into an online table, or build from scratch.
-                </p>
+            <div className="space-y-8">
+              {/* SECTION A: 3 BOQ CATEGORIES */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      <span>🏷️</span>
+                      <span>1. Select BOQ Tender Classification</span>
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Choose the evaluation paradigm according to tender requirements.
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100">
+                    Selected: {boqType}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Commercial (LMO / Consumables) */}
+                  <div
+                    onClick={() => setBoqType("COMMERCIAL")}
+                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      boqType === "COMMERCIAL"
+                        ? "border-amber-500 bg-amber-50/40 ring-4 ring-amber-500/10 shadow-sm"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-2xl">🧪</span>
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                          Recommended for LMO
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900">Commercial BOQ</h3>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                        For <strong>Liquid Medical Oxygen (LMO), gases, and recurring consumables</strong>. Skips granular technical specification scoring; focuses purely on supply unit rate, one-time SITC/PESO fees, and commercial terms.
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
+                      <span className={boqType === "COMMERCIAL" ? "text-amber-700 font-extrabold" : "text-slate-400"}>
+                        {boqType === "COMMERCIAL" ? "✓ Active Category" : "Select Commercial"}
+                      </span>
+                      <span className="text-slate-400">LMO Excel Mirror</span>
+                    </div>
+                  </div>
+
+                  {/* Technical */}
+                  <div
+                    onClick={() => setBoqType("TECHNICAL")}
+                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      boqType === "TECHNICAL"
+                        ? "border-blue-600 bg-blue-50/40 ring-4 ring-blue-500/10 shadow-sm"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-2xl">⚙️</span>
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                          Specs First
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900">Technical BOQ</h3>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                        For <strong>machinery, lab gear, and specialized hospital equipment</strong>. Deep AI specification audits, compliance matching, make/model verification, and defect detection.
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
+                      <span className={boqType === "TECHNICAL" ? "text-blue-700 font-extrabold" : "text-slate-400"}>
+                        {boqType === "TECHNICAL" ? "✓ Active Category" : "Select Technical"}
+                      </span>
+                      <span className="text-slate-400">AI Spec Audit</span>
+                    </div>
+                  </div>
+
+                  {/* Techno-Commercial */}
+                  <div
+                    onClick={() => setBoqType("TECHNOCOMMERCIAL")}
+                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      boqType === "TECHNOCOMMERCIAL"
+                        ? "border-purple-600 bg-purple-50/40 ring-4 ring-purple-500/10 shadow-sm"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-2xl">⚖️</span>
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                          Dual Envelope
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900">Techno-Commercial BOQ</h3>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                        Comprehensive <strong>QCBS dual evaluation</strong>: full technical specification scoring + commercial pricing comparative matrix side-by-side.
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
+                      <span className={boqType === "TECHNOCOMMERCIAL" ? "text-purple-700 font-extrabold" : "text-slate-400"}>
+                        {boqType === "TECHNOCOMMERCIAL" ? "✓ Active Category" : "Select Techno-Commercial"}
+                      </span>
+                      <span className="text-slate-400">QCBS Scoring</span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* OPTION 1: Direct File Upload */}
-                <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-blue-500 transition-all p-6 shadow-xs flex flex-col justify-between group">
-                  <div>
-                    <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-4 text-2xl border border-emerald-100 group-hover:scale-105 transition-transform">
-                      📄
+              {/* SECTION B: ZERO MANUAL FORM - HERO 1-CLICK INSTANT PUBLISH */}
+              <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-blue-950 text-white rounded-3xl p-8 shadow-xl border border-indigo-500/30 relative overflow-hidden">
+                <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
+                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-[11px] font-bold border border-indigo-400/30">
+                      <span>⚡ Formless Ingestion</span>
+                      <span>•</span>
+                      <span>No Manual Form Creation</span>
                     </div>
-                    <span className="inline-block px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
-                      Option A: Fast Upload
-                    </span>
-                    <h3 className="text-base font-bold text-slate-900 mb-2">
-                      Upload File for Vendor Download
-                    </h3>
-                    <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                      Upload any <strong>PDF, Excel (.xlsx/.xls), or Word (.doc/.docx)</strong> file directly. Vendors can download the original attached document to view specs and submit quotes without waiting for AI parsing.
+                    <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                      1-Click Instant AI Upload & Publish
+                    </h2>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Upload any tender document (<strong>PDF, Excel, Word DOC/DOCX</strong>). Gemini AI extracts the whole document data, recurring rates, line items, and commercial clauses, stores everything in the database, attaches the original file for vendors to download, and publishes immediately.
                     </p>
+                    <div className="flex flex-wrap gap-4 pt-2 text-[11px] text-indigo-200">
+                      <span className="flex items-center gap-1">✓ Eliminates 100% manual item typing</span>
+                      <span className="flex items-center gap-1">✓ Handles multi-page long documents</span>
+                      <span className="flex items-center gap-1">✓ Vendors download official document</span>
+                    </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => directFileInputRef.current?.click()}
-                    className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
-                  >
-                    <span>📎 Upload Document (.pdf, .xlsx, .doc)</span>
-                  </button>
+                  <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => formlessFileInputRef.current?.click()}
+                      className="px-6 py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs rounded-2xl transition-all shadow-lg hover:shadow-indigo-500/30 flex items-center justify-center space-x-2"
+                    >
+                      <span>🚀 Select File & 1-Click Publish Live</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => aiFileInputRef.current?.click()}
+                      className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-2xl border border-white/20 transition-all flex items-center justify-center space-x-2"
+                    >
+                      <span>✏️ Or Extract & Review Table First</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION C: ALTERNATIVE CREATION METHODS */}
+              <div>
+                <div className="text-center max-w-xl mx-auto mb-6">
+                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                    Or Choose Another Ingestion Method
+                  </h3>
                 </div>
 
-                {/* OPTION 2: AI Table Extraction */}
-                <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-blue-500 transition-all p-6 shadow-xs flex flex-col justify-between group relative overflow-hidden">
-                  <div className="absolute -top-3 -right-3 bg-blue-600 text-white text-[9px] font-bold px-3 py-1.5 rotate-12 rounded-full uppercase tracking-widest shadow-xs">
-                    AI Powered
-                  </div>
-                  <div>
-                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4 text-2xl border border-blue-100 group-hover:scale-105 transition-transform">
-                      ⚡
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* OPTION 1: Direct File Upload */}
+                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-emerald-500 transition-all p-6 shadow-xs flex flex-col justify-between group">
+                    <div>
+                      <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-4 text-2xl border border-emerald-100 group-hover:scale-105 transition-transform">
+                        📄
+                      </div>
+                      <span className="inline-block px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
+                        Direct Attachment
+                      </span>
+                      <h3 className="text-base font-bold text-slate-900 mb-2">
+                        Upload File for Direct Download
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                        Upload any <strong>PDF, Excel, or Word</strong> file directly. Vendors download the original attached document without AI table parsing.
+                      </p>
                     </div>
-                    <span className="inline-block px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
-                      Option B: Gemini AI Parse
-                    </span>
-                    <h3 className="text-base font-bold text-slate-900 mb-2">
-                      AI Extraction & Interactive Form
-                    </h3>
-                    <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                      Upload PDF or Excel document. <strong>Gemini AI automatically extracts all line items</strong>, specifications, units, and custom project columns into an interactive online table grid (while ALSO attaching the original document!).
-                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => directFileInputRef.current?.click()}
+                      className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+                    >
+                      <span>📎 Upload Document Directly</span>
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => aiFileInputRef.current?.click()}
-                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
-                  >
-                    <span>✨ Extract with Gemini AI</span>
-                  </button>
-                </div>
-
-                {/* OPTION 3: Create Manually */}
-                <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-blue-500 transition-all p-6 shadow-xs flex flex-col justify-between group">
-                  <div>
-                    <div className="w-12 h-12 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center mb-4 text-2xl border border-slate-200 group-hover:scale-105 transition-transform">
-                      ✍️
+                  {/* OPTION 2: AI Table Extraction */}
+                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-blue-500 transition-all p-6 shadow-xs flex flex-col justify-between group relative overflow-hidden">
+                    <div>
+                      <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4 text-2xl border border-blue-100 group-hover:scale-105 transition-transform">
+                        ⚡
+                      </div>
+                      <span className="inline-block px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
+                        Interactive Review
+                      </span>
+                      <h3 className="text-base font-bold text-slate-900 mb-2">
+                        AI Extract to Editable Grid
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                        Upload file. Gemini AI parses all items and columns into an editable table so you can review and tweak quantities before publishing.
+                      </p>
                     </div>
-                    <span className="inline-block px-2.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
-                      Option C: Manual Entry
-                    </span>
-                    <h3 className="text-base font-bold text-slate-900 mb-2">
-                      Create Form Manually
-                    </h3>
-                    <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                      Start from scratch without uploading a file. Build custom tender line items, add dynamic project columns, and specify item quantities directly in the web editor.
-                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => aiFileInputRef.current?.click()}
+                      className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+                    >
+                      <span>✨ Extract to Editable Table</span>
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTitle("New Procurement Tender");
-                      setTenderNumber(`JECRC/2026/${Math.floor(100 + Math.random() * 900)}`);
-                      setDepartment("Medical Equipment & Infrastructure");
-                      setDescription("Custom procurement tender created manually.");
-                      setCustomColumns(["Location", "Scope"]);
-                      setItems([
-                        {
-                          item_code: "1",
-                          item_name: "Sample Equipment / Item Name",
-                          specifications: "Enter specification details here...",
-                          quantity: 1,
-                          uom: "Nos",
-                          category: "General",
-                          attributes: { Location: "Main Building", Scope: "Supply & Installation" },
-                        },
-                      ]);
-                      setStep(2);
-                    }}
-                    className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
-                  >
-                    <span>✏️ Create Blank Form Manually</span>
-                  </button>
+                  {/* OPTION 3: Create Manually */}
+                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-slate-800 transition-all p-6 shadow-xs flex flex-col justify-between group">
+                    <div>
+                      <div className="w-12 h-12 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center mb-4 text-2xl border border-slate-200 group-hover:scale-105 transition-transform">
+                        ✍️
+                      </div>
+                      <span className="inline-block px-2.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
+                        Manual Entry
+                      </span>
+                      <h3 className="text-base font-bold text-slate-900 mb-2">
+                        Create Form Manually
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                        Start from scratch without uploading a file. Build custom tender line items and specify item quantities directly in the editor.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTitle(boqType === "COMMERCIAL" ? "Liquid Medical Oxygen (LMO) Supply Tender" : "Procurement Tender");
+                        setTenderNumber(`JECRC/2026/${Math.floor(100 + Math.random() * 900)}`);
+                        setDepartment(boqType === "COMMERCIAL" ? "Medical Gas Pipeline System (MGPS)" : "Medical Equipment");
+                        setDescription(boqType === "COMMERCIAL" ? "Supply and distribution of Liquid Medical Oxygen with PESO and installation scope." : "Custom procurement tender created manually.");
+                        setCustomColumns(["Location", "Scope"]);
+                        setItems([
+                          {
+                            item_code: "1",
+                            item_name: boqType === "COMMERCIAL" ? "Liquid Medical Oxygen (LMO)" : "Sample Item",
+                            specifications: boqType === "COMMERCIAL" ? "Medical Grade IP Purity 99.5% with Cryogenic Vessel" : "Specification details...",
+                            quantity: boqType === "COMMERCIAL" ? 30000 : 1,
+                            uom: boqType === "COMMERCIAL" ? "KL / CuM" : "Nos",
+                            category: "General",
+                            attributes: { Location: "Main Hospital Tank", Scope: "Continuous Supply" },
+                          },
+                        ]);
+                        setStep(2);
+                      }}
+                      className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+                    >
+                      <span>✏️ Create Blank Form Manually</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -508,7 +714,22 @@ export default function CreateUniversalBOQPage() {
           )}
 
           {/* Metadata Section */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-5">
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                BOQ Classification *
+              </label>
+              <select
+                value={boqType}
+                onChange={(e: any) => setBoqType(e.target.value)}
+                className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+              >
+                <option value="COMMERCIAL">Commercial (LMO / Gas / Consumables)</option>
+                <option value="TECHNICAL">Technical (Equipments / Labs)</option>
+                <option value="TECHNOCOMMERCIAL">Techno-Commercial (Dual QCBS)</option>
+              </select>
+            </div>
+
             <div>
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
                 Tender Title *
@@ -517,7 +738,7 @@ export default function CreateUniversalBOQPage() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Radiology Dept Equipment & Machines"
+                placeholder="e.g. Liquid Medical Oxygen (LMO) Supply"
                 className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
               />
             </div>
@@ -530,7 +751,7 @@ export default function CreateUniversalBOQPage() {
                 type="text"
                 value={tenderNumber}
                 onChange={(e) => setTenderNumber(e.target.value)}
-                placeholder="e.g. JECRC/2026/RAD/001"
+                placeholder="e.g. JECRC/2026/LMO/001"
                 className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-mono"
               />
             </div>
@@ -543,7 +764,7 @@ export default function CreateUniversalBOQPage() {
                 type="text"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                placeholder="e.g. Radiology, MGPS, Biomedical"
+                placeholder="e.g. MGPS, Pharmacy, Infrastructure"
                 className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
               />
             </div>

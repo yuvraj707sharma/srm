@@ -38,6 +38,10 @@ interface ExistingSubmission {
   payment_terms?: string;
   delivery_time?: string;
   warranty_terms?: string;
+  model_no?: string;
+  tank_capacity_location?: string;
+  document_version_id?: string;
+  extracted_data?: any;
   items: SubmittedItem[];
 }
 
@@ -47,6 +51,7 @@ interface TenderDetail {
   title: string;
   department?: string;
   description?: string;
+  boq_type?: "COMMERCIAL" | "TECHNICAL" | "TECHNOCOMMERCIAL";
   status: string;
   published_at?: string;
   deadline_at?: string;
@@ -275,7 +280,7 @@ export default function VendorTenderBiddingPage() {
       {/* Top Banner */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2 mb-1">
+          <div className="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
             <Link href="/vendor/dashboard" className="text-xs font-semibold text-slate-500 hover:text-slate-800 hover:underline">
               🏠 Dashboard
             </Link>
@@ -287,10 +292,24 @@ export default function VendorTenderBiddingPage() {
             <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
               {tender.tender_number}
             </span>
+            <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${
+              tender.boq_type === "COMMERCIAL"
+                ? "bg-amber-50 text-amber-800 border-amber-200"
+                : tender.boq_type === "TECHNICAL"
+                ? "bg-blue-50 text-blue-800 border-blue-200"
+                : "bg-purple-50 text-purple-800 border-purple-200"
+            }`}>
+              {tender.boq_type || "COMMERCIAL"} BOQ
+            </span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{tender.title}</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Department: <strong>{tender.department || "Medical College Procurement"}</strong> • {tender.items.length} Line Items
+            {tender.boq_type === "COMMERCIAL" && (
+              <span className="text-amber-700 font-semibold ml-2">
+                (Commercial Evaluation: Evaluated on Unit Supply & One-Time Charges)
+              </span>
+            )}
           </p>
         </div>
 
@@ -378,6 +397,20 @@ export default function VendorTenderBiddingPage() {
                 </strong>
                 . In compliance with JECRC Foundation Procurement Security Rules, your submitted quotes are sealed and cannot be modified.
               </p>
+
+              {tender.submission.document_version_id && (
+                <div className="mt-3">
+                  <a
+                    href={`${process.env.NEXT_PUBLIC_BACKEND_URL || ""}/api/v1/vendor/tenders/${tender.id}/submission-document`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold border border-emerald-300 transition-colors shadow-xs"
+                  >
+                    <span>📥</span>
+                    <span>Download Your Submitted Quotation Document</span>
+                  </a>
+                </div>
+              )}
             </div>
             <div className="text-left sm:text-right">
               <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">
@@ -391,6 +424,42 @@ export default function VendorTenderBiddingPage() {
               </span>
             </div>
           </div>
+
+          {/* Quotation Parameters & Commercial Terms Card */}
+          {(tender.submission.model_no || tender.submission.tank_capacity_location || tender.submission.payment_terms || tender.submission.delivery_time) && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <span>📑</span>
+                <span>AI-Extracted Quotation Intelligence & Commercial Terms</span>
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                {tender.submission.model_no && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Quoted Model / Make</span>
+                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.model_no}</span>
+                  </div>
+                )}
+                {tender.submission.tank_capacity_location && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Tank Capacity & Location</span>
+                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.tank_capacity_location}</span>
+                  </div>
+                )}
+                {tender.submission.payment_terms && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Payment Terms</span>
+                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.payment_terms}</span>
+                  </div>
+                )}
+                {tender.submission.delivery_time && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Delivery / Lead Time</span>
+                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.delivery_time}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Read-Only Submitted Breakdown */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -797,15 +866,18 @@ export default function VendorTenderBiddingPage() {
               <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
                 🤖
               </div>
-              <h3 className="text-base font-bold text-slate-900 mb-1">Upload Signed PDF Quotation (AI Powered)</h3>
+              <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-[10px] font-black rounded-full mb-2 uppercase tracking-wide">
+                Multi-Page Chunked Extraction
+              </span>
+              <h3 className="text-base font-bold text-slate-900 mb-1">Upload Signed PDF Quotation (AI Chunked Parsing)</h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto mb-6">
-                Upload your formal signed quotation PDF. Gemini AI will extract all quoted prices and models, align them with tender items, and seal your bid.
+                Upload your formal signed quotation PDF. Gemini AI processes multi-page and long quotations in intelligent chunks — extracting all recurring rates, one-time charges, model numbers, and commercial clauses with 100% data fidelity.
               </p>
 
               {uploading ? (
                 <div className="flex flex-col items-center space-y-2 py-4">
                   <div className="w-7 h-7 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold text-blue-700">Gemini AI extracting prices from PDF quotation...</span>
+                  <span className="text-xs font-bold text-blue-700">Gemini AI is parsing PDF quotation in chunks & sealing bid...</span>
                 </div>
               ) : (
                 <button
