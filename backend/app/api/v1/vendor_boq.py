@@ -486,7 +486,21 @@ async def upload_bid_file(
     existing_sub.model_no = parsed_bid.get("model_no")
     existing_sub.tank_capacity_location = parsed_bid.get("tank_capacity_location")
     existing_sub.document_version_id = doc_ver.id
-    existing_sub.extracted_data_json = json.dumps(parsed_bid.get("raw_extraction") or parsed_bid)
+    # Store the FULL parsed_bid as extracted_data_json so commercial_breakdown, commercial_terms,
+    # one_time_charges and all rich LMO commercial data are available to the frontend.
+    full_extracted = {
+        **(parsed_bid.get("raw_extraction") or {}),
+        "commercial_breakdown": parsed_bid.get("commercial_breakdown"),
+        "commercial_terms": parsed_bid.get("commercial_terms", {}),
+        "model_no": parsed_bid.get("model_no"),
+        "tank_capacity_location": parsed_bid.get("tank_capacity_location"),
+        "payment_terms": parsed_bid.get("payment_terms"),
+        "delivery_time": parsed_bid.get("delivery_time"),
+        "warranty_terms": parsed_bid.get("warranty_terms"),
+        "original_filename": file.filename,
+        "document_version_id": doc_ver.id,
+    }
+    existing_sub.extracted_data_json = json.dumps(full_extracted)
 
     for si in parsed_bid.get("items", []):
         item_obj = BOQSubmissionItem(

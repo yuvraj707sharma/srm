@@ -425,8 +425,150 @@ export default function VendorTenderBiddingPage() {
             </div>
           </div>
 
-          {/* Quotation Parameters & Commercial Terms Card */}
-          {(tender.submission.model_no || tender.submission.tank_capacity_location || tender.submission.payment_terms || tender.submission.delivery_time) && (
+          {/* COMMERCIAL BOQ: Full Commercial Quote Breakdown */}
+          {tender.boq_type === "COMMERCIAL" && tender.submission.extracted_data?.commercial_breakdown && (() => {
+            const cb = tender.submission.extracted_data.commercial_breakdown;
+            const ct = tender.submission.extracted_data.commercial_terms || {};
+            return (
+              <div className="space-y-4">
+                {/* Part 1: Recurring Charges */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                  <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                    <span className="text-sm">🔁</span>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-amber-900">Part 1 — Recurring Charges</h4>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-2.5">Description</th>
+                          <th className="px-4 py-2.5 text-right">Rate / Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {cb.gas_supply_rate_per_sm3 != null && (
+                          <tr className="hover:bg-slate-50/50">
+                            <td className="px-4 py-3 font-semibold text-slate-800">
+                              Liquid Medical Oxygen — Gas Supply Rate
+                              <span className="ml-2 text-[10px] text-slate-400 font-normal">(per SM3)</span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-blue-800">
+                              ₹{Number(cb.gas_supply_rate_per_sm3).toLocaleString("en-IN", { minimumFractionDigits: 2 })}/SM3
+                              {cb.gas_supply_rate_per_kg && (
+                                <span className="text-slate-400 font-normal ml-1 text-[10px]">
+                                  (₹{Number(cb.gas_supply_rate_per_kg).toLocaleString("en-IN", { minimumFractionDigits: 2 })}/KG)
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                        {cb.monthly_facility_charge != null && (
+                          <tr className="hover:bg-slate-50/50">
+                            <td className="px-4 py-3 font-semibold text-slate-800">Monthly Facility / Rental Charge</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                              ₹{Number(cb.monthly_facility_charge).toLocaleString("en-IN", { minimumFractionDigits: 2 })}/Month
+                            </td>
+                          </tr>
+                        )}
+                        <tr className="hover:bg-slate-50/50">
+                          <td className="px-4 py-3 font-semibold text-slate-800">Freight Charges</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
+                            {cb.freight_charges || "NIL"}
+                          </td>
+                        </tr>
+                        <tr className="hover:bg-slate-50/50">
+                          <td className="px-4 py-3 font-semibold text-slate-800">Taxes & Levies</td>
+                          <td className="px-4 py-3 text-right font-mono text-slate-700">GST Extra (as applicable)</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Part 2: One-Time Charges */}
+                {cb.one_time_charges && cb.one_time_charges.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                    <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-center gap-2">
+                      <span className="text-sm">🏗️</span>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-blue-900">Part 2 — One-Time Charges (SITC / Installation)</h4>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-2.5">Charge Description</th>
+                            <th className="px-4 py-2.5 text-right">Amount (₹)</th>
+                            <th className="px-4 py-2.5">Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {cb.one_time_charges.map((ot: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-slate-50/50">
+                              <td className="px-4 py-3 font-semibold text-slate-800">{ot.name}</td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                                ₹{Number(ot.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-4 py-3 text-slate-500">{ot.remarks || "—"}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-blue-50 font-black border-t border-blue-200">
+                            <td className="px-4 py-3 text-blue-900 uppercase text-[11px]">Total One-Time Cost</td>
+                            <td className="px-4 py-3 text-right font-mono text-blue-900">
+                              ₹{Number(cb.one_time_total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Part 3: Commercial Terms */}
+                {Object.keys(ct).some(k => ct[k]) && (
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                    <div className="px-5 py-3 bg-purple-50 border-b border-purple-200 flex items-center gap-2">
+                      <span className="text-sm">📋</span>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-purple-900">Part 3 — Commercial Terms & Conditions</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+                      {[
+                        { key: "agreement_tenure", label: "Agreement Tenure (LTA)" },
+                        { key: "lock_in_period", label: "Lock-In Period" },
+                        { key: "payment_terms_gas", label: "Payment Terms (Gas)" },
+                        { key: "payment_terms_sitc", label: "Payment Terms (SITC)" },
+                        { key: "price_escalation", label: "Price Escalation" },
+                        { key: "minimum_expected_volume", label: "Minimum Volume" },
+                        { key: "mode_of_delivery", label: "Mode of Delivery" },
+                        { key: "civil_work_scope", label: "Civil Work Scope" },
+                        { key: "delivery_time", label: "Delivery / Lead Time" },
+                      ].filter(f => ct[f.key]).map(f => (
+                        <div key={f.key} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">{f.label}</span>
+                          <span className="font-bold text-slate-800 text-xs mt-0.5 block">{ct[f.key]}</span>
+                        </div>
+                      ))}
+                      {cb.minimum_volume && (
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Minimum Volume Commitment</span>
+                          <span className="font-bold text-slate-800 text-xs mt-0.5 block">{cb.minimum_volume}</span>
+                        </div>
+                      )}
+                      {tender.submission.payment_terms && !ct["payment_terms_gas"] && (
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Payment Terms</span>
+                          <span className="font-bold text-slate-800 text-xs mt-0.5 block">{tender.submission.payment_terms}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Non-COMMERCIAL: Standard AI Extracted Terms Card */}
+          {tender.boq_type !== "COMMERCIAL" && (tender.submission.model_no || tender.submission.tank_capacity_location || tender.submission.payment_terms || tender.submission.delivery_time) && (
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                 <span>📑</span>
@@ -461,11 +603,11 @@ export default function VendorTenderBiddingPage() {
             </div>
           )}
 
-          {/* Read-Only Submitted Breakdown */}
+          {/* Read-Only Submitted Breakdown (always shown) */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="p-4 bg-slate-50 border-b border-slate-200">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                Submitted Quotation Breakdown
+                {tender.boq_type === "COMMERCIAL" ? "Recurring Gas Supply Rate (Primary BOQ Item)" : "Submitted Quotation Breakdown"}
               </h4>
             </div>
 
@@ -551,6 +693,7 @@ export default function VendorTenderBiddingPage() {
             </div>
           </div>
         </div>
+
       ) : tender.is_deadline_passed ? (
         /* CASE 2: DEADLINE PASSED & NOT SUBMITTED */
         <div className="bg-white p-16 rounded-2xl border border-slate-200 text-center shadow-xs">

@@ -677,10 +677,13 @@ async def _parse_vendor_pdf_bid_with_gemini(boq: BOQ, file_bytes: bytes, filenam
     Deep Gemini AI extraction of vendor submitted quotation document (PDF / Word / Excel).
     Processes long, multi-page bids in chunks to guarantee 100% data extraction without token truncation.
     Extracts line item quotes, model numbers, plant/tank specifications, and all commercial clauses.
+    For COMMERCIAL/LMO type BOQs, extracts the full commercial structure: gas rate, monthly charge, one-time charges.
     """
     raw_text = extract_content_from_file(file_bytes, filename)
     api_key = settings.GEMINI_API_KEY
     client = genai.Client(api_key=api_key)
+
+    boq_type = getattr(boq, "boq_type", "COMMERCIAL") or "COMMERCIAL"
 
     items_manifest = [
         {"id": item.id, "item_code": item.item_code, "item_name": item.item_name, "quantity": item.quantity, "uom": item.uom}
@@ -701,36 +704,95 @@ async def _parse_vendor_pdf_bid_with_gemini(boq: BOQ, file_bytes: bytes, filenam
     detected_delivery_time = None
     detected_warranty_terms = None
 
+    # COMMERCIAL-specific extracted fields
+    detected_gas_rate_sm3 = None
+    detected_gas_rate_kg = None
+    detected_monthly_facility_charge = None
+    detected_freight_charges = None
+    detected_one_time_charges: list = []
+    detected_minimum_volume = None
+
+    # Build type-specific prompt instructions
+    if boq_type == "COMMERCIAL":
+        type_specific_instructions = """
+IMPORTANT: This is a COMMERCIAL / LMO (Liquid Medical Oxygen) type quotation.
+The vendor quote will typically contain these distinct sections - extract ALL of them:
+
+SECTION A – RECURRING CHARGES (per unit supply):
+  - Gas supply rate per SM3 / NM3 / KG / MT  (e.g. "Rs. 13 per sm3", "Rs. 10 per KG")
+  - Monthly facility / rental / maintenance charge (e.g. "Rs. 10000 per Month")
+  - Freight charges (usually NIL or a specific amount)
+
+SECTION B – ONE-TIME CHARGES (capital / installation):
+  - One-time installation / SITC charges (e.g. Rs. 75,000)
+  - PESO / CCOE liaison / approval fees (e.g. Rs. 75,000)
+  - License fee (e.g. Rs. 1,25,000 for 5 years)
+  - Civil work charges
+  - Any other one-time cost mentioned
+
+SECTION C – COMMERCIAL TERMS:
+  - Payment terms for gas bills (e.g. 30 days from invoice)
+  - Payment terms for SITC (e.g. 50% advance, 50% on completion)
+  - Minimum agreement tenure / LTA period (e.g. 7 years, 10 years)
+  - Lock-in period
+  - Price escalation clause (e.g. NIL / fixed / annual %)
+  - Minimum monthly volume commitment
+
+For BOQ ITEM MAPPING:
+  - Use the GAS SUPPLY RATE (per SM3 or per KG) as the `quoted_unit_price` for any BOQ item about gas / oxygen / LMO supply.
+  - Use the MONTHLY FACILITY CHARGE for BOQ items about facility / equipment / VIE / tank.
+  - If there is ONLY ONE BOQ item, use the GAS SUPPLY RATE as its `quoted_unit_price`.
+  - DO NOT use monthly facility charge as the primary item price unless there is no gas rate at all.
+"""
+        extra_json_fields = """
+  "gas_supply_rate_per_sm3": number or null,
+  "gas_supply_rate_per_kg": number or null,
+  "monthly_facility_charge": number or null,
+  "freight_charges": string or null,
+  "minimum_volume": string or null,
+  "one_time_charges": [
+    {
+      "name": string,
+      "amount": number,
+      "remarks": string or null
+    }
+  ],"""
+    else:
+        type_specific_instructions = ""
+        extra_json_fields = ""
+
     for chunk_idx, chunk_text in enumerate(chunks, start=1):
         prompt = f"""You are an expert Procurement Auditor analyzing a vendor's submitted quotation / bid PDF document (Chunk {chunk_idx}/{len(chunks)}).
+BOQ Type: {boq_type}
 Master required BOQ items to match against:
 {json.dumps(items_manifest, indent=2)}
 
 Document chunk text:
 {chunk_text}
+{type_specific_instructions}
 
 TASK:
-1. Extract quoted unit price (INR), make & model, and compliance status for each item found. Match to the exact `boq_item_id`.
+1. Extract quoted unit price (INR), make & model, and compliance status for each BOQ item found. Match to the exact `boq_item_id`.
 2. Extract Vendor details, Model/Registration No, Tank Capacity & Plant Location (especially for LMO / Cryogenic plants).
 3. Extract Commercial terms:
    - payment_terms_sitc (e.g. 100% advance, 90% against LC)
    - payment_terms_gas (e.g. within 30 days)
    - delivery_time (e.g. 8 to 10 weeks)
    - warranty_terms (e.g. 2 years warranty + 5 years CMC)
-   - agreement_tenure (e.g. 10 years, 5 years)
+   - agreement_tenure (e.g. 10 years, 5 years, 7 years)
    - lock_in_period (e.g. 10 years)
    - civil_work_scope (e.g. Hospital Scope)
-   - price_escalation (e.g. Fixed for 2 years, 5% Y-o-Y)
-   - mode_of_delivery (e.g. Weighment basis)
-   - minimum_expected_volume (e.g. 40,000 M3/month)
+   - price_escalation (e.g. Fixed for 2 years, 5% Y-o-Y, NIL)
+   - mode_of_delivery (e.g. Weighment basis, Tanker)
+   - minimum_expected_volume (e.g. 40,000 M3/month, NIL)
 
-Return raw JSON:
+Return ONLY raw JSON (no markdown fences):
 {{
   "model_no": string or null,
   "tank_capacity_location": string or null,
   "payment_terms": string or null,
   "delivery_time": string or null,
-  "warranty_terms": string or null,
+  "warranty_terms": string or null,{extra_json_fields}
   "commercial_terms": {{
     "payment_terms_sitc": string or null,
     "payment_terms_gas": string or null,
@@ -808,6 +870,69 @@ Return raw JSON:
                 if val and not merged_commercial_terms.get(k):
                     merged_commercial_terms[k] = str(val)
 
+        # COMMERCIAL-specific fields
+        if boq_type == "COMMERCIAL":
+            if chunk_json.get("gas_supply_rate_per_sm3") and not detected_gas_rate_sm3:
+                try:
+                    detected_gas_rate_sm3 = float(chunk_json["gas_supply_rate_per_sm3"])
+                except Exception:
+                    pass
+            if chunk_json.get("gas_supply_rate_per_kg") and not detected_gas_rate_kg:
+                try:
+                    detected_gas_rate_kg = float(chunk_json["gas_supply_rate_per_kg"])
+                except Exception:
+                    pass
+            if chunk_json.get("monthly_facility_charge") and not detected_monthly_facility_charge:
+                try:
+                    detected_monthly_facility_charge = float(chunk_json["monthly_facility_charge"])
+                except Exception:
+                    pass
+            if chunk_json.get("freight_charges") and not detected_freight_charges:
+                detected_freight_charges = str(chunk_json["freight_charges"])
+            if chunk_json.get("minimum_volume") and not detected_minimum_volume:
+                detected_minimum_volume = str(chunk_json["minimum_volume"])
+            for ot in chunk_json.get("one_time_charges", []):
+                # Deduplicate by name
+                existing_names = {c.get("name", "").lower() for c in detected_one_time_charges}
+                if ot.get("name", "").lower() not in existing_names:
+                    detected_one_time_charges.append(ot)
+
+    # For COMMERCIAL BOQ, if Gemini didn't map items correctly, do a smart re-mapping:
+    # Use gas_supply_rate_per_sm3 as the primary unit price for all unmatched or zero-priced items.
+    if boq_type == "COMMERCIAL" and detected_gas_rate_sm3:
+        for boq_item in boq.items:
+            existing = merged_items_dict.get(boq_item.id)
+            existing_price = float(existing.get("quoted_unit_price", 0) if existing else 0)
+            # If item is about gas/oxygen/LMO supply and price is wrong (e.g. monthly facility got mapped here)
+            item_name_lower = boq_item.item_name.lower()
+            is_gas_item = any(kw in item_name_lower for kw in ["gas", "oxygen", "lmo", "o2", "sm3", "nm3", "liquid"])
+            is_facility_item = any(kw in item_name_lower for kw in ["facility", "rental", "vie", "tank", "equipment", "monthly"])
+            if is_gas_item and existing_price != detected_gas_rate_sm3:
+                merged_items_dict[boq_item.id] = {
+                    "boq_item_id": boq_item.id,
+                    "quoted_unit_price": detected_gas_rate_sm3,
+                    "make_model_quoted": detected_model_no or "Liquid Medical Oxygen IP",
+                    "technical_compliance": "COMPLIANT",
+                    "vendor_remarks": f"Gas rate: ₹{detected_gas_rate_sm3}/SM3" + (f" (₹{detected_gas_rate_kg}/KG)" if detected_gas_rate_kg else "")
+                }
+            elif is_facility_item and detected_monthly_facility_charge and existing_price != detected_monthly_facility_charge:
+                merged_items_dict[boq_item.id] = {
+                    "boq_item_id": boq_item.id,
+                    "quoted_unit_price": detected_monthly_facility_charge,
+                    "make_model_quoted": detected_model_no or "",
+                    "technical_compliance": "COMPLIANT",
+                    "vendor_remarks": f"Monthly facility charge: ₹{detected_monthly_facility_charge}/month"
+                }
+            elif not existing or existing_price == 0 or existing_price == detected_monthly_facility_charge:
+                # Default: if price is 0 or incorrectly set to monthly charge, use gas rate
+                merged_items_dict[boq_item.id] = {
+                    "boq_item_id": boq_item.id,
+                    "quoted_unit_price": detected_gas_rate_sm3,
+                    "make_model_quoted": detected_model_no or "Liquid Medical Oxygen IP",
+                    "technical_compliance": "COMPLIANT",
+                    "vendor_remarks": f"Gas rate: ₹{detected_gas_rate_sm3}/SM3" + (f" (₹{detected_gas_rate_kg}/KG)" if detected_gas_rate_kg else "")
+                }
+
     # Build final items matching boq.items
     parsed_items = []
     for boq_item in boq.items:
@@ -838,14 +963,30 @@ Return raw JSON:
     gst_amount = sub_total * (gst_percent / 100.0)
     grand_total = sub_total + gst_amount
 
+    # Build rich commercial breakdown for COMMERCIAL type
+    commercial_breakdown = None
+    if boq_type == "COMMERCIAL":
+        one_time_total = sum(float(c.get("amount", 0)) for c in detected_one_time_charges)
+        commercial_breakdown = {
+            "gas_supply_rate_per_sm3": detected_gas_rate_sm3,
+            "gas_supply_rate_per_kg": detected_gas_rate_kg,
+            "monthly_facility_charge": detected_monthly_facility_charge,
+            "freight_charges": detected_freight_charges or "NIL",
+            "minimum_volume": detected_minimum_volume,
+            "one_time_charges": detected_one_time_charges,
+            "one_time_total": one_time_total,
+        }
+
     raw_extraction = {
         "filename": filename,
+        "boq_type": boq_type,
         "model_no": detected_model_no,
         "tank_capacity_location": detected_tank_capacity,
         "payment_terms": detected_payment_terms,
         "delivery_time": detected_delivery_time,
         "warranty_terms": detected_warranty_terms,
         "commercial_terms": merged_commercial_terms,
+        "commercial_breakdown": commercial_breakdown,
         "items": parsed_items,
         "sub_total": sub_total,
         "grand_total": grand_total
@@ -859,10 +1000,11 @@ Return raw JSON:
         "grand_total": grand_total,
         "model_no": detected_model_no,
         "tank_capacity_location": detected_tank_capacity,
-        "payment_terms": detected_payment_terms or merged_commercial_terms.get("payment_terms_sitc") or "As per quotation",
+        "payment_terms": detected_payment_terms or merged_commercial_terms.get("payment_terms_gas") or "As per quotation",
         "delivery_time": detected_delivery_time or merged_commercial_terms.get("delivery_time") or "As per quotation",
         "warranty_terms": detected_warranty_terms or merged_commercial_terms.get("warranty_terms") or "Standard 1 Year",
         "commercial_terms": merged_commercial_terms,
+        "commercial_breakdown": commercial_breakdown,
         "raw_extraction": raw_extraction,
         "submission_type": "PDF_UPLOAD"
     }
@@ -871,6 +1013,7 @@ Return raw JSON:
 # -------------------------------------------------------------------------
 # 5. AI TECHNICAL SPEC AUDIT & DISCREPANCY DETECTION
 # -------------------------------------------------------------------------
+
 
 async def evaluate_submission_technical_compliance(
     boq: BOQ, 
