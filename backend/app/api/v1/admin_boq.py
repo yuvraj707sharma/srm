@@ -75,6 +75,7 @@ async def require_admin_or_token(
 # -------------------------------------------------------------------------
 
 class ItemPayload(BaseModel):
+    id: Optional[str] = None
     item_code: Optional[str] = None
     item_name: str
     specifications: Optional[str] = None
@@ -99,6 +100,15 @@ class BOQCreatePayload(BaseModel):
     publish_now: Optional[bool] = False
     document_version_id: Optional[str] = None
     extracted_data: Optional[Dict[str, Any]] = None
+
+class BOQUpdatePayload(BaseModel):
+    title: str
+    tender_number: Optional[str] = None
+    department: Optional[str] = None
+    description: Optional[str] = None
+    boq_type: Optional[str] = "COMMERCIAL"
+    custom_columns: Optional[List[str]] = []
+    items: List[ItemPayload]
 
 class PublishPayload(BaseModel):
     target_audience: str = "ALL_APPROVED"  # ALL_APPROVED | SELECTED_VENDORS
@@ -408,6 +418,67 @@ async def create_boq(
         await _notify_vendors_for_boq(db, new_boq)
 
     return {"status": "success", "boq_id": new_boq.id}
+
+
+@router.put("/{boq_id}")
+async def update_boq(
+    boq_id: str,
+    payload: BOQUpdatePayload,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    stmt = select(BOQ).options(selectinload(BOQ.items)).where(BOQ.id == boq_id)
+    res = await db.execute(stmt)
+    boq = res.scalar_one_or_none()
+    if not boq:
+        raise HTTPException(status_code=404, detail="BOQ not found")
+
+    boq.title = payload.title
+    boq.tender_number = payload.tender_number
+    boq.department = payload.department
+    boq.description = payload.description
+    boq.boq_type = payload.boq_type or "COMMERCIAL"
+    boq.custom_columns_json = json.dumps(payload.custom_columns) if payload.custom_columns else "[]"
+
+    # Upsert items
+    existing_items_map = {it.id: it for it in boq.items}
+    incoming_item_ids = set()
+
+    for item_data in payload.items:
+        if item_data.id and item_data.id in existing_items_map:
+            # Update existing
+            it = existing_items_map[item_data.id]
+            it.item_code = item_data.item_code
+            it.item_name = item_data.item_name
+            it.specifications = item_data.specifications
+            it.quantity = item_data.quantity
+            it.uom = item_data.uom or "Nos"
+            it.category = item_data.category
+            it.target_price = item_data.target_price
+            it.attributes_json = json.dumps(item_data.attributes) if item_data.attributes else "{}"
+            incoming_item_ids.add(it.id)
+        else:
+            # Add new
+            new_item = BOQItem(
+                boq_id=boq.id,
+                item_code=item_data.item_code,
+                item_name=item_data.item_name,
+                specifications=item_data.specifications,
+                quantity=item_data.quantity,
+                uom=item_data.uom or "Nos",
+                category=item_data.category,
+                target_price=item_data.target_price,
+                attributes_json=json.dumps(item_data.attributes) if item_data.attributes else "{}"
+            )
+            db.add(new_item)
+
+    # Delete missing items
+    for existing_id, existing_item in existing_items_map.items():
+        if existing_id not in incoming_item_ids:
+            await db.delete(existing_item)
+
+    await db.commit()
+    return {"status": "success", "boq_id": boq.id}
 
 
 @router.get("/{boq_id}")

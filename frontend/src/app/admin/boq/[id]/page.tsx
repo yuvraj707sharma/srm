@@ -325,6 +325,15 @@ export default function AdminBOQDetailPage() {
             </button>
 
             <Link
+              href={`/admin/boq/${boq.id}/edit`}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 rounded-xl font-bold text-xs transition-all shadow-sm hover:shadow"
+              title="Edit BOQ Details & Line Items"
+            >
+              <span>✏️</span>
+              <span>Edit Tender</span>
+            </Link>
+
+            <Link
               href="/admin/boq"
               className="inline-flex items-center space-x-1.5 px-3 py-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl font-semibold text-xs transition-colors"
             >
