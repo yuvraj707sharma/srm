@@ -902,12 +902,12 @@ Return ONLY raw JSON (no markdown fences):
     if boq_type == "COMMERCIAL" and detected_gas_rate_sm3:
         for boq_item in boq.items:
             existing = merged_items_dict.get(boq_item.id)
-            existing_price = float(existing.get("quoted_unit_price", 0) if existing else 0)
-            # If item is about gas/oxygen/LMO supply and price is wrong (e.g. monthly facility got mapped here)
+            
             item_name_lower = boq_item.item_name.lower()
             is_gas_item = any(kw in item_name_lower for kw in ["gas", "oxygen", "lmo", "o2", "sm3", "nm3", "liquid"])
-            is_facility_item = any(kw in item_name_lower for kw in ["facility", "rental", "vie", "tank", "equipment", "monthly"])
-            if is_gas_item and existing_price != detected_gas_rate_sm3:
+            is_facility_item = any(kw in item_name_lower for kw in ["facility", "rental", "vie", "tank", "equipment"])
+            
+            if is_gas_item:
                 merged_items_dict[boq_item.id] = {
                     "boq_item_id": boq_item.id,
                     "quoted_unit_price": detected_gas_rate_sm3,
@@ -915,7 +915,7 @@ Return ONLY raw JSON (no markdown fences):
                     "technical_compliance": "COMPLIANT",
                     "vendor_remarks": f"Gas rate: ₹{detected_gas_rate_sm3}/SM3" + (f" (₹{detected_gas_rate_kg}/KG)" if detected_gas_rate_kg else "")
                 }
-            elif is_facility_item and detected_monthly_facility_charge and existing_price != detected_monthly_facility_charge:
+            elif is_facility_item and detected_monthly_facility_charge:
                 merged_items_dict[boq_item.id] = {
                     "boq_item_id": boq_item.id,
                     "quoted_unit_price": detected_monthly_facility_charge,
@@ -923,14 +923,13 @@ Return ONLY raw JSON (no markdown fences):
                     "technical_compliance": "COMPLIANT",
                     "vendor_remarks": f"Monthly facility charge: ₹{detected_monthly_facility_charge}/month"
                 }
-            elif not existing or existing_price == 0 or existing_price == detected_monthly_facility_charge:
-                # Default: if price is 0 or incorrectly set to monthly charge, use gas rate
+            elif not existing:
                 merged_items_dict[boq_item.id] = {
                     "boq_item_id": boq_item.id,
-                    "quoted_unit_price": detected_gas_rate_sm3,
-                    "make_model_quoted": detected_model_no or "Liquid Medical Oxygen IP",
+                    "quoted_unit_price": 0.0,
+                    "make_model_quoted": "",
                     "technical_compliance": "COMPLIANT",
-                    "vendor_remarks": f"Gas rate: ₹{detected_gas_rate_sm3}/SM3" + (f" (₹{detected_gas_rate_kg}/KG)" if detected_gas_rate_kg else "")
+                    "vendor_remarks": ""
                 }
 
     # Build final items matching boq.items
