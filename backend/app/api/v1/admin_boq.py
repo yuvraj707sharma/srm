@@ -25,6 +25,7 @@ from app.services.boq import (
     get_submission_detail_data,
     evaluate_submission_technical_compliance,
     export_comparative_statement_excel,
+    export_comparative_statement_pdf,
     generate_boq_excel_template
 )
 from app.services.email import send_boq_invitation_email
@@ -836,6 +837,27 @@ async def export_comparative_excel(
     return StreamingResponse(
         excel_stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get("/{boq_id}/export-pdf")
+async def export_comparative_pdf(
+    boq_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin_or_token)
+):
+    """
+    Exports a professional PDF comparative statement using ReportLab.
+    A3 Landscape with vendor summary, price matrix, disqualification notes and signature block.
+    """
+    data = await get_comparative_statement_data(db, boq_id)
+    pdf_stream = export_comparative_statement_pdf(data)
+
+    filename = f"Comparative_Statement_{data.get('tender_number', 'BOQ')}.pdf"
+    return StreamingResponse(
+        pdf_stream,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 

@@ -277,14 +277,28 @@ export default function ComparativeStatementPage() {
     }
   };
 
-  const handlePrintPdf = () => {
+  const handlePrintPdf = async () => {
     setShowDownloadMenu(false);
-    setIsDownloadingPdf(true);
-    // Small timeout so the menu closes before print dialog opens
-    setTimeout(() => {
-      window.print();
+    try {
+      setIsDownloadingPdf(true);
+      const res = await fetchApi(`/api/v1/admin/boq/${boqId}/export-pdf`);
+      if (!res.ok) {
+        throw new Error("Failed to generate comparative PDF.");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Comparative_Statement_${data?.tender_number || "BOQ"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert("Error exporting PDF: " + (err.message || "Failed to download"));
+    } finally {
       setIsDownloadingPdf(false);
-    }, 200);
+    }
   };
 
   const handleRunAiAudit = async () => {

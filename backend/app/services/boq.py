@@ -1409,8 +1409,8 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
             "deviation_count": dev_count,
             "non_compliant_count": non_comp_count,
             "total_items": len(s.items),
-            "is_disqualified": bool(s.is_disqualified),
-            "disqualification_note": s.disqualification_note or None,
+            "is_disqualified": bool(getattr(s, "is_disqualified", False)),
+            "disqualification_note": getattr(s, "disqualification_note", None) or None,
         })
 
     # Prepare matrix rows: for each BOQItem, extract each vendor's quote and discrepancy
@@ -1734,12 +1734,20 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
         # Merge vendor label across 3 columns
         # Row 3: Vendor 1 (L1/L2), Row 4: Vendor Name, Row 5: Contact No, Row 6: Model No, Row 7: Tank Capacity & Location
         ws.merge_cells(start_row=3, start_column=v_start, end_row=3, end_column=v_end)
-        cell_v = ws.cell(row=3, column=v_start, value=f"Vendor {idx} ({v.get('l_rank', '')})")
-        cell_v.font = white_bold_11
-        cell_v.fill = navy_fill if v.get("l_rank") != "L1" else l1_gold_fill
-        if v.get("l_rank") == "L1":
-            cell_v.font = l1_font
+        is_dq = v.get("is_disqualified", False)
+        dq_note = v.get("disqualification_note") or ""
+        rank_label = "DISQUALIFIED" if is_dq else v.get('l_rank', '')
+        cell_v = ws.cell(row=3, column=v_start, value=f"Vendor {idx} ({rank_label}){' — ' + dq_note if is_dq and dq_note else ''}")
+        if is_dq:
+            cell_v.fill = PatternFill(start_color="7F1D1D", end_color="7F1D1D", fill_type="solid")
+            cell_v.font = Font(name="Calibri", size=10, bold=True, color="FCA5A5")
+        else:
+            cell_v.font = white_bold_11
+            cell_v.fill = navy_fill if v.get("l_rank") != "L1" else l1_gold_fill
+            if v.get("l_rank") == "L1":
+                cell_v.font = l1_font
         cell_v.alignment = Alignment(horizontal="center", vertical="center")
+
 
         ws.merge_cells(start_row=4, start_column=v_start, end_row=4, end_column=v_end)
         c4 = ws.cell(row=4, column=v_start, value=v.get('vendor_name') or v.get('company_name') or f"Vendor {idx}")
@@ -1939,3 +1947,309 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
     wb.save(stream)
     stream.seek(0)
     return stream
+
+
+def export_comparative_statement_pdf(comp_data: Dict[str, Any]) -> io.BytesIO:
+    """
+    Builds a professional PDF comparative statement using ReportLab.
+    A4 landscape layout with full vendor comparison table, L1/T1 rankings,
+    disqualification notes, totals, and signature block.
+    """
+    from reportlab.lib.pagesizes import A3, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm, cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph,
+        Spacer, HRFlowable, KeepTogether
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+    buffer = io.BytesIO()
+    page_size = landscape(A3)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=page_size,
+        rightMargin=1.5*cm, leftMargin=1.5*cm,
+        topMargin=1.5*cm, bottomMargin=1.5*cm,
+        title="Comparative Statement"
+    )
+
+    styles = getSampleStyleSheet()
+    # Custom styles
+    title_style = ParagraphStyle("Title", parent=styles["Normal"],
+        fontSize=14, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"),
+        spaceAfter=4, alignment=TA_LEFT)
+    subtitle_style = ParagraphStyle("Sub", parent=styles["Normal"],
+        fontSize=9, fontName="Helvetica", textColor=colors.HexColor("#64748B"),
+        spaceAfter=2)
+    heading_style = ParagraphStyle("Heading", parent=styles["Normal"],
+        fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#0F172A"))
+    cell_style = ParagraphStyle("Cell", parent=styles["Normal"],
+        fontSize=7.5, fontName="Helvetica", textColor=colors.HexColor("#1E293B"), leading=10)
+    cell_bold = ParagraphStyle("CellBold", parent=styles["Normal"],
+        fontSize=7.5, fontName="Helvetica-Bold", textColor=colors.HexColor("#0F172A"), leading=10)
+    cell_center = ParagraphStyle("CellC", parent=styles["Normal"],
+        fontSize=7.5, fontName="Helvetica", textColor=colors.HexColor("#1E293B"), alignment=TA_CENTER, leading=10)
+    dq_style = ParagraphStyle("DQ", parent=styles["Normal"],
+        fontSize=7, fontName="Helvetica-Bold", textColor=colors.HexColor("#DC2626"),
+        alignment=TA_CENTER, leading=9)
+
+    vendors = comp_data.get("vendors", [])
+    rows = comp_data.get("rows", [])
+    tender_number = comp_data.get("tender_number", "")
+    tender_title = comp_data.get("title", "")
+    dept = comp_data.get("department", "Procurement")
+    boq_type = comp_data.get("boq_type", "COMMERCIAL")
+
+    # Color palette
+    navy = colors.HexColor("#1E3A8A")
+    dark_slate = colors.HexColor("#1E293B")
+    gold = colors.HexColor("#D97706")
+    gold_light = colors.HexColor("#FEF3C7")
+    dq_red = colors.HexColor("#7F1D1D")
+    dq_red_light = colors.HexColor("#FEE2E2")
+    slate_100 = colors.HexColor("#F1F5F9")
+    slate_200 = colors.HexColor("#E2E8F0")
+    white = colors.white
+    emerald = colors.HexColor("#059669")
+    amber_light = colors.HexColor("#FFF3CD")
+
+    story = []
+
+    # ---- Header ----
+    story.append(Paragraph("JECRC Medical College &amp; Hospital", ParagraphStyle("Org", parent=styles["Normal"],
+        fontSize=9, fontName="Helvetica", textColor=colors.HexColor("#64748B"))))
+    story.append(Paragraph(f"Comparative Statement of Quotations — {tender_title}", title_style))
+    story.append(Paragraph(
+        f"Tender No: {tender_number} &nbsp;&nbsp;|&nbsp;&nbsp; Department: {dept} &nbsp;&nbsp;|&nbsp;&nbsp; Type: {boq_type} BOQ",
+        subtitle_style))
+    story.append(HRFlowable(width="100%", thickness=2, color=navy, spaceAfter=8))
+
+    # ---- Vendor Summary Cards (Header Row Table) ----
+    num_v = len(vendors)
+    vendor_header_data = [[
+        Paragraph("Vendor", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+                                           textColor=white, alignment=TA_CENTER)),
+        Paragraph("L-Rank", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+                                           textColor=white, alignment=TA_CENTER)),
+        Paragraph("Company Name", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+                                                  textColor=white, alignment=TA_CENTER)),
+        Paragraph("Contact", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+                                             textColor=white, alignment=TA_CENTER)),
+        Paragraph("Grand Total (₹)", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+                                                      textColor=white, alignment=TA_CENTER)),
+        Paragraph("GST %", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+                                           textColor=white, alignment=TA_CENTER)),
+        Paragraph("Status", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+                                            textColor=white, alignment=TA_CENTER)),
+    ]]
+
+    vendor_styles = [
+        ("BACKGROUND", (0, 0), (-1, 0), navy),
+        ("TEXTCOLOR", (0, 0), (-1, 0), white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [white, slate_100]),
+        ("GRID", (0, 0), (-1, -1), 0.4, slate_200),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+
+    for i, v in enumerate(vendors, start=1):
+        is_dq = v.get("is_disqualified", False)
+        is_l1 = v.get("l_rank") == "L1"
+        grand_total = v.get("negotiated_grand_total") or v.get("grand_total") or 0
+
+        txt_color = colors.HexColor("#DC2626") if is_dq else (gold if is_l1 else dark_slate)
+        row = [
+            Paragraph(f"V{i}", cell_center),
+            Paragraph(v.get("l_rank", "-"), ParagraphStyle("Rank", parent=styles["Normal"],
+                fontSize=8, fontName="Helvetica-Bold", textColor=txt_color, alignment=TA_CENTER)),
+            Paragraph(v.get("vendor_name", "-"), cell_style),
+            Paragraph(v.get("contact_no", "-"), cell_style),
+            Paragraph(f"₹{grand_total:,.2f}", ParagraphStyle("Amt", parent=styles["Normal"],
+                fontSize=8, fontName="Helvetica-Bold", textColor=txt_color, alignment=TA_RIGHT)),
+            Paragraph(f"{v.get('gst_percent', 18):.0f}%", cell_center),
+            Paragraph("⛔ DISQUALIFIED" if is_dq else ("✅ L1 WINNER" if is_l1 else "Active"), dq_style if is_dq else cell_center),
+        ]
+        vendor_header_data.append(row)
+        row_idx = i  # 1-indexed body row
+
+        if is_dq:
+            vendor_styles.extend([
+                ("BACKGROUND", (0, row_idx), (-1, row_idx), dq_red_light),
+                ("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.HexColor("#DC2626")),
+            ])
+        elif is_l1:
+            vendor_styles.extend([
+                ("BACKGROUND", (0, row_idx), (-1, row_idx), gold_light),
+            ])
+
+    avail_width = page_size[0] - 3*cm
+    vh_table = Table(vendor_header_data, colWidths=[
+        avail_width * 0.05, avail_width * 0.07, avail_width * 0.24,
+        avail_width * 0.15, avail_width * 0.18, avail_width * 0.07, avail_width * 0.14
+    ])
+    vh_table.setStyle(TableStyle(vendor_styles))
+    story.append(vh_table)
+    story.append(Spacer(1, 8))
+
+    # ---- Disqualification Notes Section ----
+    dq_vendors = [v for v in vendors if v.get("is_disqualified")]
+    if dq_vendors:
+        dq_data = [[
+            Paragraph("Disqualified Vendors — Reason Log", ParagraphStyle("DQHDR", parent=styles["Normal"],
+                fontSize=9, fontName="Helvetica-Bold", textColor=white))
+        ]]
+        for v in dq_vendors:
+            dq_data.append([Paragraph(
+                f"<b>⛔ {v.get('vendor_name')}</b> — {v.get('disqualification_note') or 'No reason provided'}",
+                ParagraphStyle("DQNote", parent=styles["Normal"], fontSize=7.5,
+                    textColor=colors.HexColor("#991B1B"), leading=11)
+            )])
+        dq_table = Table(dq_data, colWidths=[avail_width])
+        dq_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), dq_red),
+            ("BACKGROUND", (0, 1), (-1, -1), dq_red_light),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#FECACA")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(dq_table)
+        story.append(Spacer(1, 8))
+
+    # ---- Comparative Price Matrix ----
+    story.append(Paragraph("Comparative Price Matrix", ParagraphStyle("MatHdr", parent=styles["Normal"],
+        fontSize=11, fontName="Helvetica-Bold", textColor=navy, spaceAfter=4)))
+
+    # Build header row: S.No | Item | UOM | Qty | [V1 Quoted | V1 Neg | V1 Total] x N
+    matrix_header = [
+        Paragraph("#", cell_bold),
+        Paragraph("Item / Description", cell_bold),
+        Paragraph("UOM", cell_center),
+        Paragraph("Qty", cell_center),
+    ]
+    for i, v in enumerate(vendors, start=1):
+        is_dq = v.get("is_disqualified", False)
+        col_color = colors.HexColor("#DC2626") if is_dq else (gold if v.get("l_rank") == "L1" else white)
+        matrix_header.append(Paragraph(f"V{i} Quoted (₹)", ParagraphStyle("MH", parent=styles["Normal"],
+            fontSize=6.5, fontName="Helvetica-Bold", textColor=col_color, alignment=TA_CENTER)))
+        matrix_header.append(Paragraph(f"V{i} Neg (₹)", ParagraphStyle("MH", parent=styles["Normal"],
+            fontSize=6.5, fontName="Helvetica-Bold", textColor=col_color, alignment=TA_CENTER)))
+        matrix_header.append(Paragraph(f"V{i} Total (₹)", ParagraphStyle("MH", parent=styles["Normal"],
+            fontSize=6.5, fontName="Helvetica-Bold", textColor=col_color, alignment=TA_CENTER)))
+
+    matrix_data = [matrix_header]
+    matrix_styles_list = [
+        ("BACKGROUND", (0, 0), (-1, 0), navy),
+        ("TEXTCOLOR", (0, 0), (-1, 0), white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [white, slate_100]),
+        ("GRID", (0, 0), (-1, -1), 0.3, slate_200),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]
+
+    # Highlight L1 vendor columns with gold tint
+    for i, v in enumerate(vendors):
+        col_start = 4 + i * 3
+        col_end = col_start + 2
+        if v.get("l_rank") == "L1":
+            matrix_styles_list.append(("BACKGROUND", (col_start, 0), (col_end, 0), gold))
+        elif v.get("is_disqualified"):
+            matrix_styles_list.append(("BACKGROUND", (col_start, 0), (col_end, 0), dq_red))
+
+    for row in rows:
+        data_row = [
+            Paragraph(str(row.get("s_no", "")), cell_center),
+            Paragraph(f"<b>{row.get('item_name', '')}</b><br/><font size='6'>{row.get('specifications', '')[:80]}</font>", cell_style),
+            Paragraph(row.get("uom", ""), cell_center),
+            Paragraph(str(row.get("quantity", "")), cell_center),
+        ]
+        for v in vendors:
+            q = row.get("vendor_quotes", {}).get(v.get("submission_id", ""), {})
+            quoted = q.get("initial_quoted_price", 0) or 0
+            neg = q.get("negotiated_price") or 0
+            total = q.get("total_amount", 0) or 0
+            is_dq = v.get("is_disqualified", False)
+            num_style = ParagraphStyle("Num", parent=styles["Normal"],
+                fontSize=7, fontName="Helvetica",
+                textColor=colors.HexColor("#9CA3AF") if is_dq else dark_slate,
+                alignment=TA_RIGHT)
+            data_row.extend([
+                Paragraph(f"₹{quoted:,.2f}", num_style),
+                Paragraph(f"₹{neg:,.2f}" if neg else "-", num_style),
+                Paragraph(f"₹{total:,.2f}", num_style),
+            ])
+        matrix_data.append(data_row)
+
+    # Totals row
+    totals_row = [
+        Paragraph("", cell_bold),
+        Paragraph("GRAND TOTAL (incl. GST)", ParagraphStyle("TotLbl", parent=styles["Normal"],
+            fontSize=8, fontName="Helvetica-Bold", textColor=navy)),
+        Paragraph("", cell_bold),
+        Paragraph("", cell_bold),
+    ]
+    for v in vendors:
+        is_dq = v.get("is_disqualified", False)
+        eff = v.get("negotiated_grand_total") or v.get("grand_total") or 0
+        tot_color = colors.HexColor("#DC2626") if is_dq else (gold if v.get("l_rank") == "L1" else navy)
+        totals_row.extend([
+            Paragraph("", cell_bold),
+            Paragraph("", cell_bold),
+            Paragraph(f"₹{eff:,.2f}", ParagraphStyle("Tot", parent=styles["Normal"],
+                fontSize=8, fontName="Helvetica-Bold", textColor=tot_color, alignment=TA_RIGHT)),
+        ])
+    matrix_data.append(totals_row)
+
+    total_row_idx = len(matrix_data) - 1
+    matrix_styles_list.extend([
+        ("BACKGROUND", (0, total_row_idx), (-1, total_row_idx), dark_slate),
+        ("TEXTCOLOR", (0, total_row_idx), (-1, total_row_idx), white),
+        ("FONTNAME", (0, total_row_idx), (-1, total_row_idx), "Helvetica-Bold"),
+        ("LINEABOVE", (0, total_row_idx), (-1, total_row_idx), 1.5, navy),
+    ])
+
+    # Column widths for matrix
+    base_widths = [avail_width * 0.03, avail_width * 0.18, avail_width * 0.05, avail_width * 0.04]
+    remaining = avail_width - sum(base_widths)
+    per_vendor = remaining / num_v if num_v else remaining
+    vendor_col_widths = [per_vendor / 3] * 3 * num_v
+    matrix_col_widths = base_widths + vendor_col_widths
+
+    matrix_table = Table(matrix_data, colWidths=matrix_col_widths, repeatRows=1)
+    matrix_table.setStyle(TableStyle(matrix_styles_list))
+    story.append(matrix_table)
+    story.append(Spacer(1, 12))
+
+    # ---- Signature Block ----
+    sig_data = [[
+        Paragraph("Prepared by:", cell_style),
+        Paragraph("Reviewed by (Technical Head):", cell_style),
+        Paragraph("Approved by (CEO):", cell_style),
+    ], [
+        Paragraph("\n\n\n_______________________", cell_style),
+        Paragraph("\n\n\n_______________________", cell_style),
+        Paragraph("\n\n\n_______________________", cell_style),
+    ]]
+    sig_table = Table(sig_data, colWidths=[avail_width / 3] * 3)
+    sig_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0, white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(sig_table)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
