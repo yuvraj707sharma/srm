@@ -1880,7 +1880,7 @@ def export_comparative_statement_excel(comp_data: Dict[str, Any]) -> io.BytesIO:
     v_col = num_base + 1
     for v in vendors:
         ws.merge_cells(start_row=current_row, start_column=v_col, end_row=current_row, end_column=v_col + 2)
-        gst_amt = v["submission_details"]["commercials"].get("gst_amount", 0.0)
+        gst_amt = v.get("gst_amount", 0.0)
         c = ws.cell(row=current_row, column=v_col, value=gst_amt)
         c.font = bold_data
         c.number_format = "#,##0.00"
@@ -2055,7 +2055,7 @@ def export_comparative_statement_pdf(comp_data: Dict[str, Any]) -> io.BytesIO:
                                                   textColor=white, alignment=TA_CENTER)),
         Paragraph("Contact", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
                                              textColor=white, alignment=TA_CENTER)),
-        Paragraph("Grand Total (₹)", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
+        Paragraph("Grand Total (Rs.)", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
                                                       textColor=white, alignment=TA_CENTER)),
         Paragraph("GST %", ParagraphStyle("VH", parent=styles["Normal"], fontSize=7.5, fontName="Helvetica-Bold",
                                            textColor=white, alignment=TA_CENTER)),
@@ -2089,7 +2089,7 @@ def export_comparative_statement_pdf(comp_data: Dict[str, Any]) -> io.BytesIO:
                 fontSize=8, fontName="Helvetica-Bold", textColor=txt_color, alignment=TA_CENTER)),
             Paragraph(v.get("vendor_name", "-"), cell_style),
             Paragraph(v.get("contact_no", "-"), cell_style),
-            Paragraph(f"₹{grand_total:,.2f}", ParagraphStyle("Amt", parent=styles["Normal"],
+            Paragraph(f"Rs. {grand_total:,.2f}", ParagraphStyle("Amt", parent=styles["Normal"],
                 fontSize=8, fontName="Helvetica-Bold", textColor=txt_color, alignment=TA_RIGHT)),
             Paragraph(f"{v.get('gst_percent', 18):.0f}%", cell_center),
             Paragraph("⛔ DISQUALIFIED" if is_dq else ("✅ L1 WINNER" if is_l1 else "Active"), dq_style if is_dq else cell_center),
@@ -2155,11 +2155,11 @@ def export_comparative_statement_pdf(comp_data: Dict[str, Any]) -> io.BytesIO:
     for i, v in enumerate(vendors, start=1):
         is_dq = v.get("is_disqualified", False)
         col_color = colors.HexColor("#DC2626") if is_dq else (gold if v.get("l_rank") == "L1" else white)
-        matrix_header.append(Paragraph(f"V{i} Quoted (₹)", ParagraphStyle("MH", parent=styles["Normal"],
+        matrix_header.append(Paragraph(f"V{i} Quoted (Rs.)", ParagraphStyle("MH", parent=styles["Normal"],
             fontSize=6.5, fontName="Helvetica-Bold", textColor=col_color, alignment=TA_CENTER)))
-        matrix_header.append(Paragraph(f"V{i} Neg (₹)", ParagraphStyle("MH", parent=styles["Normal"],
+        matrix_header.append(Paragraph(f"V{i} Neg (Rs.)", ParagraphStyle("MH", parent=styles["Normal"],
             fontSize=6.5, fontName="Helvetica-Bold", textColor=col_color, alignment=TA_CENTER)))
-        matrix_header.append(Paragraph(f"V{i} Total (₹)", ParagraphStyle("MH", parent=styles["Normal"],
+        matrix_header.append(Paragraph(f"V{i} Total (Rs.)", ParagraphStyle("MH", parent=styles["Normal"],
             fontSize=6.5, fontName="Helvetica-Bold", textColor=col_color, alignment=TA_CENTER)))
 
     matrix_data = [matrix_header]
@@ -2204,9 +2204,9 @@ def export_comparative_statement_pdf(comp_data: Dict[str, Any]) -> io.BytesIO:
                 textColor=colors.HexColor("#9CA3AF") if is_dq else dark_slate,
                 alignment=TA_RIGHT)
             data_row.extend([
-                Paragraph(f"₹{quoted:,.2f}", num_style),
-                Paragraph(f"₹{neg:,.2f}" if neg else "-", num_style),
-                Paragraph(f"₹{total:,.2f}", num_style),
+                Paragraph(f"Rs. {quoted:,.2f}", num_style),
+                Paragraph(f"Rs. {neg:,.2f}" if neg else "-", num_style),
+                Paragraph(f"Rs. {total:,.2f}", num_style),
             ])
         matrix_data.append(data_row)
 
@@ -2225,7 +2225,7 @@ def export_comparative_statement_pdf(comp_data: Dict[str, Any]) -> io.BytesIO:
         totals_row.extend([
             Paragraph("", cell_bold),
             Paragraph("", cell_bold),
-            Paragraph(f"₹{eff:,.2f}", ParagraphStyle("Tot", parent=styles["Normal"],
+            Paragraph(f"Rs. {eff:,.2f}", ParagraphStyle("Tot", parent=styles["Normal"],
                 fontSize=8, fontName="Helvetica-Bold", textColor=tot_color, alignment=TA_RIGHT)),
         ])
     matrix_data.append(totals_row)
