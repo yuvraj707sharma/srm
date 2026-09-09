@@ -118,8 +118,8 @@ export default function AdminBOQPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <div className="flex items-center space-x-3">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Tender & BOQ Management</h1>
-            <span className="bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-blue-200">
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight">Tender & BOQ Management</h1>
+            <span className="bg-blue-50 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-200">
               Universal AI System
             </span>
           </div>
@@ -142,42 +142,42 @@ export default function AdminBOQPage() {
 
       {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Total Tenders</span>
-            <span className="text-2xl font-bold text-slate-900 mt-1 block">{totalTenders}</span>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Total Tenders</span>
+            <span className="text-xl font-bold text-slate-900 mt-0.5 block">{totalTenders}</span>
           </div>
-          <div className="w-11 h-11 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center font-bold text-lg">
+          <div className="w-9 h-9 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center font-bold text-base">
             📑
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-emerald-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider block">Bidding Open (Active)</span>
-            <span className="text-2xl font-bold text-emerald-700 mt-1 block">{activeTenders}</span>
+            <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider block">Bidding Open (Active)</span>
+            <span className="text-xl font-bold text-emerald-700 mt-0.5 block">{activeTenders}</span>
           </div>
-          <div className="w-11 h-11 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold text-lg">
+          <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold text-base">
             ⏱️
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-amber-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider block">Time-Locked / Review</span>
-            <span className="text-2xl font-bold text-amber-700 mt-1 block">{lockedTenders}</span>
+            <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider block">Time-Locked / Review</span>
+            <span className="text-xl font-bold text-amber-700 mt-0.5 block">{lockedTenders}</span>
           </div>
-          <div className="w-11 h-11 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold text-lg">
+          <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold text-base">
             🔒
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-blue-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-4 rounded-xl border border-blue-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider block">Vendor Bids Submitted</span>
-            <span className="text-2xl font-bold text-blue-700 mt-1 block">{totalBids}</span>
+            <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider block">Vendor Bids Submitted</span>
+            <span className="text-xl font-bold text-blue-700 mt-0.5 block">{totalBids}</span>
           </div>
-          <div className="w-11 h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold text-lg">
+          <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold text-base">
             📊
           </div>
         </div>
@@ -219,49 +219,47 @@ export default function AdminBOQPage() {
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
+              <tbody className="divide-y divide-slate-100 text-xs">
                 {boqs.map((boq) => {
                   const isLocked = boq.status === "LOCKED" || boq.is_deadline_passed;
                   const isPublished = boq.status === "PUBLISHED" && !boq.is_deadline_passed;
 
                   return (
-                    <tr key={boq.id} className="hover:bg-slate-50/70 transition-colors">
-                      {/* Tender Info */}
-                      <td className="px-6 py-4">
+                    <tr key={boq.id}>
+                      <td className="px-4 py-3">
                         <div className="flex items-center space-x-2">
                           <Link
                             href={`/admin/boq/${boq.id}`}
-                            className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
+                            className="font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
                           >
                             {boq.tender_number}
                           </Link>
                         </div>
                         <Link
                           href={`/admin/boq/${boq.id}`}
-                          className="font-bold text-slate-900 mt-1 text-sm block hover:text-blue-600 transition-colors"
+                          className="font-semibold text-slate-900 mt-0.5 text-xs block hover:text-blue-600 transition-colors"
                         >
                           {boq.title}
                         </Link>
-                        <div className="text-xs text-slate-400 mt-0.5">
+                        <div className="text-[10px] text-slate-400 mt-0.5">
                           {boq.total_items} Line Items
                         </div>
                       </td>
 
-                      {/* Department */}
-                      <td className="px-6 py-4">
-                        <span className="inline-block bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-md">
+                      <td className="px-4 py-3">
+                        <span className="inline-block bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded-md">
                           {boq.department || "General"}
                         </span>
                         {boq.description && (
-                          <p className="text-xs text-slate-500 mt-1 max-w-xs truncate">{boq.description}</p>
+                          <p className="text-[10px] text-slate-500 mt-1 max-w-xs truncate">{boq.description}</p>
                         )}
                       </td>
 
                       {/* Deadline Countdown & Status */}
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3">
                         {isPublished ? (
                           <div>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
                               {formatCountdown(boq.remaining_seconds)}
                             </span>
                             <div className="text-[10px] text-slate-400 mt-1">
@@ -270,27 +268,26 @@ export default function AdminBOQPage() {
                           </div>
                         ) : isLocked ? (
                           <div>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
                               🔒 Submission Locked
                             </span>
                             <div className="text-[10px] text-slate-400 mt-1">Ready for Comparative Review</div>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
                             Draft (Unpublished)
                           </span>
                         )}
                       </td>
 
-                      {/* Target Audience */}
-                      <td className="px-6 py-4 text-xs font-medium text-slate-600">
+                      <td className="px-4 py-3">
                         {boq.target_audience === "ALL_APPROVED" ? (
-                          <span className="inline-flex items-center space-x-1 text-slate-700">
+                          <span className="inline-flex items-center space-x-1 text-slate-700 text-[10px]">
                             <span>🌐</span>
                             <span>All Approved Vendors</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center space-x-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
+                          <span className="inline-flex items-center space-x-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 text-[10px]">
                             <span>🎯</span>
                             <span>Selected Vendors</span>
                           </span>
@@ -298,8 +295,8 @@ export default function AdminBOQPage() {
                       </td>
 
                       {/* Bids Received */}
-                      <td className="px-6 py-4 text-center">
-                        <span className={`inline-flex items-center justify-center font-bold text-xs px-2.5 py-1 rounded-full ${
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center justify-center font-bold text-[10px] px-2 py-0.5 rounded-full ${
                           boq.total_submissions > 0
                             ? "bg-blue-100 text-blue-800"
                             : "bg-slate-100 text-slate-500"
@@ -309,10 +306,10 @@ export default function AdminBOQPage() {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-6 py-4 text-right space-x-2">
+                      <td className="px-4 py-3 text-right space-x-1.5">
                         <Link
                           href={`/admin/boq/${boq.id}`}
-                          className="inline-flex items-center space-x-1 text-xs font-semibold text-slate-700 hover:text-blue-700 bg-white hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition-colors border border-slate-200 hover:border-blue-300 shadow-2xs"
+                          className="inline-flex items-center space-x-1 text-[10px] font-semibold text-slate-700 hover:text-blue-700 bg-white hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors border border-slate-200 hover:border-blue-300 shadow-2xs"
                           title="View Full BOQ Details & Line Items"
                         >
                           <span>👁️ Details</span>
@@ -320,18 +317,18 @@ export default function AdminBOQPage() {
 
                         <Link
                           href={`/admin/boq/${boq.id}/compare`}
-                          className="inline-flex items-center space-x-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 rounded-lg transition-all shadow-xs"
+                          className="inline-flex items-center space-x-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg transition-all shadow-xs"
                           title="View Side-by-side Comparative Statement and L1/T1 Rankings"
                         >
                           <span>Comparative (L1/T1)</span>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
                           </svg>
                         </Link>
 
                         <button
                           onClick={() => setExtendingBoq(boq)}
-                          className="inline-flex items-center text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors border border-slate-200"
+                          className="inline-flex items-center text-[10px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition-colors border border-slate-200"
                           title="Extend Submission Deadline Time"
                         >
                           ⏱️ Time
@@ -339,7 +336,7 @@ export default function AdminBOQPage() {
 
                         <button
                           onClick={() => setDeletingBoq(boq)}
-                          className="inline-flex items-center text-xs font-semibold text-red-600 hover:text-white bg-red-50 hover:bg-red-600 px-2.5 py-1.5 rounded-lg transition-colors border border-red-200 hover:border-red-600"
+                          className="inline-flex items-center text-[10px] font-semibold text-red-600 hover:text-white bg-red-50 hover:bg-red-600 px-2 py-1 rounded-lg transition-colors border border-red-200 hover:border-red-600"
                           title="Delete BOQ"
                         >
                           🗑️

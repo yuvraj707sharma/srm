@@ -152,6 +152,8 @@ export default function ComparativeStatementPage() {
 
   // Action loading states
   const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -242,6 +244,7 @@ export default function ComparativeStatementPage() {
   };
 
   const handleDownloadExcel = async () => {
+    setShowDownloadMenu(false);
     try {
       setIsDownloadingExcel(true);
       const res = await fetchApi(`/api/v1/admin/boq/${boqId}/export-excel`);
@@ -262,6 +265,16 @@ export default function ComparativeStatementPage() {
     } finally {
       setIsDownloadingExcel(false);
     }
+  };
+
+  const handlePrintPdf = () => {
+    setShowDownloadMenu(false);
+    setIsDownloadingPdf(true);
+    // Small timeout so the menu closes before print dialog opens
+    setTimeout(() => {
+      window.print();
+      setIsDownloadingPdf(false);
+    }, 200);
   };
 
   const handleRunAiAudit = async () => {
@@ -399,20 +412,62 @@ export default function ComparativeStatementPage() {
             </button>
           )}
 
-          <button
-            onClick={handleDownloadExcel}
-            disabled={isDownloadingExcel}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all shadow-sm hover:shadow disabled:opacity-50"
-          >
-            {isDownloadingExcel ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
+          {/* Download Split Button */}
+          <div className="relative">
+            <div className="flex rounded-xl overflow-hidden shadow-sm border border-emerald-600">
+              <button
+                onClick={handleDownloadExcel}
+                disabled={isDownloadingExcel || isDownloadingPdf}
+                className="inline-flex items-center space-x-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all disabled:opacity-50"
+              >
+                {isDownloadingExcel ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                )}
+                <span>{isDownloadingExcel ? "Exporting..." : "Download Excel"}</span>
+              </button>
+              <button
+                onClick={() => setShowDownloadMenu((p) => !p)}
+                className="px-2.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs transition-all border-l border-emerald-500"
+                title="More download options"
+              >
+                <svg className={`w-3.5 h-3.5 transition-transform ${showDownloadMenu ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+
+            {showDownloadMenu && (
+              <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                <button
+                  onClick={handleDownloadExcel}
+                  disabled={isDownloadingExcel}
+                  className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-50 text-left text-xs font-semibold text-slate-700 transition-colors disabled:opacity-50"
+                >
+                  <span className="w-7 h-7 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center text-base">📊</span>
+                  <div>
+                    <div className="font-bold text-slate-800">Excel (.xlsx)</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Formatted spreadsheet with L1/T1 ranks</div>
+                  </div>
+                </button>
+                <div className="border-t border-slate-100"></div>
+                <button
+                  onClick={handlePrintPdf}
+                  disabled={isDownloadingPdf}
+                  className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-50 text-left text-xs font-semibold text-slate-700 transition-colors disabled:opacity-50"
+                >
+                  <span className="w-7 h-7 bg-red-50 text-red-600 rounded-lg flex items-center justify-center text-base">📄</span>
+                  <div>
+                    <div className="font-bold text-slate-800">PDF Report</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Print-ready comparative report</div>
+                  </div>
+                </button>
+              </div>
             )}
-            <span>{isDownloadingExcel ? "Exporting..." : "Download Excel (.xlsx)"}</span>
-          </button>
+          </div>
         </div>
       </div>
 
@@ -1663,6 +1718,28 @@ export default function ComparativeStatementPage() {
         submissionId={selectedSubmissionId}
         vendorName={selectedVendorName}
       />
+
+      {/* Close download menu on outside click */}
+      {showDownloadMenu && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowDownloadMenu(false)} />
+      )}
+
+      {/* Print-only CSS for PDF export */}
+      <style>{`
+        @media print {
+          body { font-size: 10px !important; }
+          nav, header, footer, .no-print { display: none !important; }
+          .print\\:hidden { display: none !important; }
+          button, [role="button"] { display: none !important; }
+          table { border-collapse: collapse !important; page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          th, td { border: 1px solid #cbd5e1 !important; padding: 4px 6px !important; font-size: 9px !important; }
+          h1 { font-size: 14px !important; margin-bottom: 4px !important; }
+          .space-y-6 > * { margin-top: 12px !important; }
+          .overflow-x-auto { overflow: visible !important; }
+          @page { margin: 1.2cm; size: A3 landscape; }
+        }
+      `}</style>
     </div>
   );
 }
