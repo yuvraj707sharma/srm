@@ -1191,10 +1191,11 @@ Return ONLY valid JSON matching this schema:
 
 
 def _generate_strategic_advisory(
-    l1_vendor: Optional[Dict[str, Any]],
-    t1_vendor: Optional[Dict[str, Any]],
-    qcbs_rankings: List[Dict[str, Any]],
-    rows: List[Dict[str, Any]]
+    l1_vendor: Dict[str, Any], 
+    t1_vendor: Dict[str, Any], 
+    qcbs_rankings: List[Dict[str, Any]], 
+    rows: List[Dict[str, Any]], 
+    dq_vendors: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
     Generates high-level executive award recommendations and alerts for the procurement committee.
@@ -1202,9 +1203,9 @@ def _generate_strategic_advisory(
     if not l1_vendor:
         return {
             "status": "NO_BIDS",
-            "headline": "No Bids Submitted",
-            "summary": "No submissions available for this tender.",
-            "badge": "Pending Submissions",
+            "headline": "No Bids Submitted or All Bidders Disqualified",
+            "summary": "No active submissions available for this tender, or all bidders have been disqualified.",
+            "badge": "Action Required",
             "recommended_vendor_id": None,
             "action_items": []
         }
@@ -1214,14 +1215,20 @@ def _generate_strategic_advisory(
     l1_tech_score = l1_vendor.get("technical_score", 0.0)
     t1_vendor_name = t1_vendor.get("vendor_name", "") if t1_vendor else ""
 
+    dq_note = ""
+    if dq_vendors:
+        dq_names = ", ".join([v.get("vendor_name", "") for v in dq_vendors])
+        dq_note = f"\nNote: {len(dq_vendors)} vendor(s) ({dq_names}) were disqualified and excluded from this evaluation."
+
     # Check for critical discrepancies in L1
     if l1_non_comp > 0 or l1_tech_score < 75.0:
         headline = f"Risk Alert: Commercial L1 ({l1_vendor['vendor_name']}) has Critical Technical Discrepancies"
         summary = (
-            f"{l1_vendor['vendor_name']} is commercially the lowest bidder at ₹{l1_vendor['effective_total']:,.2f}, "
+            f"{l1_vendor['vendor_name']} is commercially the lowest bidder among remaining qualified vendors at ₹{l1_vendor['effective_total']:,.2f}, "
             f"but quoted {l1_non_comp} item(s) that fail mandatory tender specifications (Technical Score: {l1_tech_score}%). "
             f"In contrast, {t1_vendor_name} achieved the highest technical compliance ({t1_vendor.get('compliance_percentage', 0)}%) "
             f"at ₹{t1_vendor.get('effective_total', 0):,.2f}."
+            f"{dq_note}"
         )
         status = "CRITICAL_L1_DISCREPANCY_ALERT"
         badge = "L1 Technical Risk Detected"
@@ -1234,8 +1241,9 @@ def _generate_strategic_advisory(
     elif l1_dev > 0:
         headline = f"Advisory: Commercial L1 ({l1_vendor['vendor_name']}) has Minor Deviations"
         summary = (
-            f"{l1_vendor['vendor_name']} is L1 at ₹{l1_vendor['effective_total']:,.2f} with {l1_dev} minor technical deviation(s). "
+            f"{l1_vendor['vendor_name']} is L1 among remaining qualified vendors at ₹{l1_vendor['effective_total']:,.2f} with {l1_dev} minor technical deviation(s). "
             f"Technical score is acceptable at {l1_tech_score}%."
+            f"{dq_note}"
         )
         status = "L1_MINOR_DEVIATIONS"
         badge = "L1 Acceptable with Clarification"
@@ -1247,8 +1255,9 @@ def _generate_strategic_advisory(
     else:
         headline = f"Optimal Award: {l1_vendor['vendor_name']} is Both L1 and Fully Compliant"
         summary = (
-            f"{l1_vendor['vendor_name']} successfully achieves L1 commercial ranking (₹{l1_vendor['effective_total']:,.2f}) "
+            f"{l1_vendor['vendor_name']} successfully achieves L1 commercial ranking (₹{l1_vendor['effective_total']:,.2f}) among remaining qualified vendors "
             f"and meets 100% of technical specifications with zero non-compliance."
+            f"{dq_note}"
         )
         status = "RECOMMENDED_FOR_AWARD"
         badge = "Ready for Award"
@@ -1321,7 +1330,7 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
         return sub.grand_total or 0.0
 
     sorted_by_price = sorted(
-        [s for s in active_submissions if get_effective_total(s) > 0],
+        [s for s in active_submissions if get_effective_total(s) > 0 and not getattr(s, "is_disqualified", False)],
         key=lambda s: get_effective_total(s)
     )
 
@@ -1338,7 +1347,11 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
         compliant_count = sum(1 for item in sub.items if item.technical_compliance == "COMPLIANT")
         return (compliant_count / len(sub.items)) * 100.0
 
-    sorted_by_tech = sorted(active_submissions, key=get_compliance_score, reverse=True)
+    sorted_by_tech = sorted(
+        [s for s in active_submissions if not getattr(s, "is_disqualified", False)],
+        key=get_compliance_score, 
+        reverse=True
+    )
     t1_submission_id = sorted_by_tech[0].id if sorted_by_tech else None
 
     # Parse custom columns list
@@ -1493,7 +1506,10 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
         })
 
     # Cost Analytics
-    all_eff_totals = [v["effective_total"] for v in vendors_meta if v["effective_total"] > 0]
+    # Filter out disqualified for statistical baseline and QCBS
+    qualified_vendors = [v for v in vendors_meta if not v.get("is_disqualified")]
+    
+    all_eff_totals = [v["effective_total"] for v in qualified_vendors if v["effective_total"] > 0]
     lowest_grand_total = min(all_eff_totals) if all_eff_totals else 0.0
     highest_grand_total = max(all_eff_totals) if all_eff_totals else 0.0
     price_spread = highest_grand_total - lowest_grand_total
@@ -1505,8 +1521,9 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
     for r in rows:
         prices = [
             q["initial_quoted_price"] 
-            for q in r["vendor_quotes"].values() 
-            if q["initial_quoted_price"] > 0
+            for v in qualified_vendors
+            for sid, q in r["vendor_quotes"].items()
+            if sid == v["submission_id"] and q["initial_quoted_price"] > 0
         ]
         if prices:
             min_p = min(prices)
@@ -1524,7 +1541,7 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
 
     # QCBS Composite Scoring (70% Commercial + 30% Technical)
     qcbs_rankings = []
-    for v in vendors_meta:
+    for v in qualified_vendors:
         v_eff = v["effective_total"]
         comm_score = (lowest_grand_total / v_eff * 70.0) if (v_eff > 0 and lowest_grand_total > 0) else 0.0
         tech_score = v["compliance_percentage"] or 0.0
@@ -1545,7 +1562,8 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
     # Strategic Advisory
     l1_vendor = next((v for v in vendors_meta if v["l_rank"] == "L1"), None)
     t1_vendor = next((v for v in vendors_meta if v["is_t1"]), None)
-    advisory = _generate_strategic_advisory(l1_vendor, t1_vendor, qcbs_rankings, rows)
+    dq_vendors = [v for v in vendors_meta if v.get("is_disqualified")]
+    advisory = _generate_strategic_advisory(l1_vendor, t1_vendor, qcbs_rankings, rows, dq_vendors)
 
     return {
         "boq_id": boq.id,

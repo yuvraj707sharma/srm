@@ -845,10 +845,10 @@ export default function ComparativeStatementPage() {
 
                           return (
                             <Fragment key={v.submission_id}>
-                              <td className="px-3 py-2.5 text-right font-mono border-l border-slate-200">
+                              <td className={`px-3 py-2.5 text-right font-mono border-l border-slate-200 ${v.is_disqualified ? 'bg-red-50/70 opacity-60 text-red-900' : ''}`}>
                                 ₹{quotedPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                               </td>
-                              <td className="px-2 py-2 text-right bg-blue-50/50">
+                              <td className={`px-2 py-2 text-right ${v.is_disqualified ? 'bg-red-100/50 opacity-60 text-red-900' : 'bg-blue-50/50'}`}>
                                 <input
                                   type="number"
                                   value={negPrice !== undefined ? negPrice : ""}
@@ -857,10 +857,11 @@ export default function ComparativeStatementPage() {
                                     handleNegotiatedPriceChange(v.submission_id, quote.submission_item_id, e.target.value)
                                   }
                                   placeholder={String(quotedPrice)}
+                                  disabled={v.is_disqualified}
                                   className="w-24 text-right px-2 py-1 bg-white border border-slate-300 rounded font-mono text-xs focus:ring-2 focus:ring-blue-500"
                                 />
                               </td>
-                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">
+                              <td className={`px-3 py-2.5 text-right font-mono font-bold ${v.is_disqualified ? 'bg-red-50/70 opacity-60 text-red-900' : 'text-slate-900'}`}>
                                 ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                               </td>
                             </Fragment>
@@ -874,20 +875,20 @@ export default function ComparativeStatementPage() {
                     <td colSpan={3} className="px-4 py-2.5 text-right uppercase text-slate-700">
                       Sub Total (Recurring Charges):
                     </td>
-                    {data.vendors.map((v) => (
+                    {visibleVendors.map((v) => (
                       <Fragment key={v.submission_id}>
-                        <td className="border-l border-slate-300"></td>
-                        <td className="text-center">
+                        <td className={`border-l border-slate-300 ${v.is_disqualified ? 'bg-red-50/70' : ''}`}></td>
+                        <td className={`text-center ${v.is_disqualified ? 'bg-red-50/70' : ''}`}>
                           <button
                             type="button"
                             onClick={() => handleSaveNegotiations(v.submission_id)}
-                            disabled={savingNegotiation}
-                            className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold"
+                            disabled={savingNegotiation || v.is_disqualified}
+                            className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold disabled:opacity-50"
                           >
                             Save
                           </button>
                         </td>
-                        <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">
+                        <td className={`px-3 py-2.5 text-right font-mono font-bold ${v.is_disqualified ? 'bg-red-50/70 opacity-60 text-red-900' : 'text-slate-900'}`}>
                           ₹{v.sub_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                         </td>
                       </Fragment>
@@ -899,11 +900,11 @@ export default function ComparativeStatementPage() {
                     <td colSpan={3} className="px-4 py-2 text-right uppercase text-slate-600">
                       Total GST (As per Line Items):
                     </td>
-                    {data.vendors.map((v) => (
+                    {visibleVendors.map((v) => (
                       <Fragment key={v.submission_id}>
-                        <td className="border-l border-slate-200"></td>
-                        <td></td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-700">
+                        <td className={`border-l border-slate-200 ${v.is_disqualified ? 'bg-red-50/70' : ''}`}></td>
+                        <td className={v.is_disqualified ? 'bg-red-50/70' : ''}></td>
+                        <td className={`px-3 py-2 text-right font-mono ${v.is_disqualified ? 'bg-red-50/70 opacity-60 text-red-900' : 'text-slate-700'}`}>
                           ₹{v.gst_amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                         </td>
                       </Fragment>
@@ -912,7 +913,7 @@ export default function ComparativeStatementPage() {
 
                   {/* PART 2: ONE-TIME / SITC CHARGES SECTION */}
                   <tr className="bg-amber-100/70 font-black text-amber-950 border-t-2 border-amber-300">
-                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 uppercase tracking-wider text-xs">
+                    <td colSpan={3 + visibleVendors.length * 3} className="px-4 py-2.5 uppercase tracking-wider text-xs">
                       Part 2: One-Time / SITC Installation & Commissioning Charges
                     </td>
                   </tr>
@@ -940,7 +941,7 @@ export default function ComparativeStatementPage() {
                           {row.uom} ({row.quantity})
                         </td>
 
-                        {data.vendors.map((v) => {
+                        {visibleVendors.map((v) => {
                           const quote = row.vendor_quotes[v.submission_id];
                           const quotedPrice = quote?.initial_quoted_price || 0;
                           const negPrice = negotiatedRates[v.submission_id]?.[quote?.submission_item_id || ""] !== undefined
@@ -950,10 +951,10 @@ export default function ComparativeStatementPage() {
 
                           return (
                             <Fragment key={v.submission_id}>
-                              <td className="px-3 py-2.5 text-right font-mono border-l border-slate-200">
+                              <td className={`px-3 py-2.5 text-right font-mono border-l border-slate-200 ${v.is_disqualified ? 'bg-red-50/70 opacity-60 text-red-900' : ''}`}>
                                 ₹{quotedPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                               </td>
-                              <td className="px-2 py-2 text-right bg-blue-50/50">
+                              <td className={`px-2 py-2 text-right ${v.is_disqualified ? 'bg-red-100/50 opacity-60 text-red-900' : 'bg-blue-50/50'}`}>
                                 <input
                                   type="number"
                                   value={negPrice !== undefined ? negPrice : ""}
@@ -962,10 +963,11 @@ export default function ComparativeStatementPage() {
                                     handleNegotiatedPriceChange(v.submission_id, quote.submission_item_id, e.target.value)
                                   }
                                   placeholder={String(quotedPrice)}
+                                  disabled={v.is_disqualified}
                                   className="w-24 text-right px-2 py-1 bg-white border border-slate-300 rounded font-mono text-xs focus:ring-2 focus:ring-blue-500"
                                 />
                               </td>
-                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">
+                              <td className={`px-3 py-2.5 text-right font-mono font-bold ${v.is_disqualified ? 'bg-red-50/70 opacity-60 text-red-900' : 'text-slate-900'}`}>
                                 ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                               </td>
                             </Fragment>
@@ -979,13 +981,13 @@ export default function ComparativeStatementPage() {
                     <td colSpan={3} className="px-4 py-3.5 text-right uppercase text-amber-400 tracking-wider">
                       Grand Total Quoted:
                     </td>
-                    {data.vendors.map((v) => (
+                    {visibleVendors.map((v) => (
                       <Fragment key={v.submission_id}>
-                        <td className="border-l border-slate-700"></td>
-                        <td></td>
+                        <td className={`border-l border-slate-700 ${v.is_disqualified ? 'bg-red-950/60' : ''}`}></td>
+                        <td className={v.is_disqualified ? 'bg-red-950/60' : ''}></td>
                         <td
                           className={`px-3 py-3.5 text-right font-mono font-black text-sm ${
-                            v.l_rank === "L1" ? "bg-[#FEF08A] text-slate-950" : "text-white"
+                            v.is_disqualified ? "bg-red-950/60 text-red-300 opacity-60" : v.l_rank === "L1" ? "bg-[#FEF08A] text-slate-950" : "text-white"
                           }`}
                         >
                           ₹{v.grand_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -996,7 +998,7 @@ export default function ComparativeStatementPage() {
 
                   {/* PART 3: COMMERCIAL TERMS MATRIX */}
                   <tr className="bg-slate-800 text-white font-black uppercase text-xs">
-                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 tracking-wider">
+                    <td colSpan={3 + visibleVendors.length * 3} className="px-4 py-2.5 tracking-wider">
                       Part 3: Commercial Terms & Scope Conditions
                     </td>
                   </tr>
@@ -1017,10 +1019,10 @@ export default function ComparativeStatementPage() {
                       <td colSpan={3} className="px-4 py-2.5 font-bold text-slate-700 border-r border-slate-200">
                         {term.label}:
                       </td>
-                      {data.vendors.map((v) => {
+                      {visibleVendors.map((v) => {
                         const val = (v as any)[term.key] || (v as any)[term.key.replace("payment_terms_sitc", "payment_terms")] || term.fallback;
                         return (
-                          <td key={v.submission_id} colSpan={3} className="px-4 py-2.5 text-center border-l border-slate-200 font-medium text-slate-800">
+                          <td key={v.submission_id} colSpan={3} className={`px-4 py-2.5 text-center border-l border-slate-200 font-medium ${v.is_disqualified ? 'bg-red-50/70 text-red-900 opacity-60' : 'text-slate-800'}`}>
                             {val}
                           </td>
                         );
@@ -1030,7 +1032,7 @@ export default function ComparativeStatementPage() {
 
                   {/* PART 4: RATINGS & RANKINGS */}
                   <tr className="bg-slate-800 text-white font-black uppercase text-xs">
-                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 tracking-wider">
+                    <td colSpan={3 + visibleVendors.length * 3} className="px-4 py-2.5 tracking-wider">
                       Part 4: Technical & Commercial Ratings
                     </td>
                   </tr>
@@ -1038,9 +1040,9 @@ export default function ComparativeStatementPage() {
                     <td colSpan={3} className="px-4 py-3 font-bold text-slate-700 border-r border-slate-200">
                       Technical Evaluation Rating:
                     </td>
-                    {data.vendors.map((v) => (
-                      <td key={v.submission_id} colSpan={3} className="px-4 py-3 text-center border-l border-slate-200 font-bold text-emerald-700">
-                        Qualified (1)
+                    {visibleVendors.map((v) => (
+                      <td key={v.submission_id} colSpan={3} className={`px-4 py-3 text-center border-l border-slate-200 font-bold ${v.is_disqualified ? 'bg-red-50/70 text-red-900 opacity-60' : 'text-emerald-700'}`}>
+                        {v.is_disqualified ? 'Disqualified' : 'Qualified (1)'}
                       </td>
                     ))}
                   </tr>
@@ -1048,17 +1050,21 @@ export default function ComparativeStatementPage() {
                     <td colSpan={3} className="px-4 py-3 font-bold text-slate-900 border-r border-slate-200">
                       Commercial Rating (Ranking):
                     </td>
-                    {data.vendors.map((v) => (
+                    {visibleVendors.map((v) => (
                       <td
                         key={v.submission_id}
                         colSpan={3}
                         className={`px-4 py-3 text-center border-l border-slate-200 font-black text-sm ${
-                          v.l_rank === "L1"
+                          v.is_disqualified
+                            ? "bg-red-100/70 text-red-900"
+                            : v.l_rank === "L1"
                             ? "bg-[#FEF08A] text-slate-950 font-black"
                             : "bg-slate-50 text-slate-800"
                         }`}
                       >
-                        {v.l_rank} {v.l_rank === "L1" && "(Lowest Quoted Bidder)"}
+                        {v.is_disqualified ? "⛔ DISQUALIFIED" : (
+                          <>{v.l_rank} {v.l_rank === "L1" && "(Lowest Quoted Bidder)"}</>
+                        )}
                       </td>
                     ))}
                   </tr>
