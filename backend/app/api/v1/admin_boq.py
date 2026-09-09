@@ -125,6 +125,10 @@ class NegotiationPayload(BaseModel):
     negotiated_grand_total: Optional[float] = None
     items: Optional[List[Dict[str, Any]]] = []  # [{submission_item_id, negotiated_unit_price}]
 
+class DisqualifyPayload(BaseModel):
+    is_disqualified: bool
+    note: Optional[str] = None
+
 
 # -------------------------------------------------------------------------
 # Endpoints
@@ -943,3 +947,37 @@ async def delete_boq_submission(
     await db.commit()
     
     return {"status": "success", "message": "Vendor submission deleted successfully."}
+
+
+@router.patch("/{boq_id}/submissions/{submission_id}/disqualify")
+async def disqualify_submission(
+    boq_id: str,
+    submission_id: str,
+    payload: DisqualifyPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Mark a vendor submission as disqualified (or reinstate it).
+    Stores the reason note alongside the flag.
+    """
+    stmt = select(BOQSubmission).where(
+        BOQSubmission.id == submission_id,
+        BOQSubmission.boq_id == boq_id
+    )
+    res = await db.execute(stmt)
+    submission = res.scalar_one_or_none()
+
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+
+    submission.is_disqualified = payload.is_disqualified
+    submission.disqualification_note = payload.note if payload.is_disqualified else None
+    await db.commit()
+
+    return {
+        "status": "success",
+        "submission_id": submission_id,
+        "is_disqualified": submission.is_disqualified,
+        "disqualification_note": submission.disqualification_note,
+    }

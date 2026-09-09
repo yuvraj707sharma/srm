@@ -95,9 +95,14 @@ class BOQSubmission(Base):
     technical_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     technical_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     extracted_data_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # Full Gemini extraction of vendor quote
-    
+
+    # Disqualification / Shortlisting
+    is_disqualified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    disqualification_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 
     # Relationships
     boq = relationship("BOQ", back_populates="submissions")

@@ -1408,7 +1408,9 @@ async def get_comparative_statement_data(db: AsyncSession, boq_id: str) -> Dict[
             "compliant_count": comp_count,
             "deviation_count": dev_count,
             "non_compliant_count": non_comp_count,
-            "total_items": len(s.items)
+            "total_items": len(s.items),
+            "is_disqualified": bool(s.is_disqualified),
+            "disqualification_note": s.disqualification_note or None,
         })
 
     # Prepare matrix rows: for each BOQItem, extract each vendor's quote and discrepancy

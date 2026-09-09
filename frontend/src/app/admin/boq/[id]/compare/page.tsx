@@ -62,6 +62,8 @@ interface VendorMeta {
   deviation_count?: number;
   non_compliant_count?: number;
   total_items?: number;
+  is_disqualified?: boolean;
+  disqualification_note?: string | null;
 }
 
 interface MatrixRow {
@@ -156,6 +158,14 @@ export default function ComparativeStatementPage() {
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+
+  // View filter
+  const [showShortlistedOnly, setShowShortlistedOnly] = useState(false);
+
+  // Disqualification modal state
+  const [disqualifyTarget, setDisqualifyTarget] = useState<VendorMeta | null>(null);
+  const [disqualifyNote, setDisqualifyNote] = useState("");
+  const [isSavingDisqualify, setIsSavingDisqualify] = useState(false);
 
   // Negotiated Rates State: { [submission_id]: { [submission_item_id]: price } }
   const [negotiatedRates, setNegotiatedRates] = useState<Record<string, Record<string, number>>>({});
@@ -310,6 +320,37 @@ export default function ComparativeStatementPage() {
     }
   };
 
+  const openDisqualifyModal = (vendor: VendorMeta) => {
+    setDisqualifyTarget(vendor);
+    setDisqualifyNote(vendor.disqualification_note || "");
+  };
+
+  const closeDisqualifyModal = () => {
+    setDisqualifyTarget(null);
+    setDisqualifyNote("");
+  };
+
+  const handleSaveDisqualify = async (isDisqualified: boolean) => {
+    if (!disqualifyTarget) return;
+    setIsSavingDisqualify(true);
+    try {
+      const res = await fetchApi(
+        `/api/v1/admin/boq/${boqId}/submissions/${disqualifyTarget.submission_id}/disqualify`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ is_disqualified: isDisqualified, note: isDisqualified ? disqualifyNote : null }),
+        }
+      );
+      if (!res.ok) throw new Error("Failed to update disqualification status.");
+      closeDisqualifyModal();
+      await loadComparativeData();
+    } catch (err: any) {
+      alert("Error: " + (err.message || "Failed to save."));
+    } finally {
+      setIsSavingDisqualify(false);
+    }
+  };
+
   const openVendorDetail = (submissionId: string, vendorName: string) => {
     setSelectedSubmissionId(submissionId);
     setSelectedVendorName(vendorName);
@@ -345,6 +386,12 @@ export default function ComparativeStatementPage() {
   const t1Vendor = data.t1_profile || data.vendors.find((v) => v.is_t1);
   const advisory = data.advisory;
   const isL1AtRisk = advisory?.status === "CRITICAL_L1_DISCREPANCY_ALERT";
+
+  // Vendors shown in the table (respect Shortlisted Only toggle)
+  const disqualifiedCount = data.vendors.filter((v) => v.is_disqualified).length;
+  const visibleVendors = showShortlistedOnly
+    ? data.vendors.filter((v) => !v.is_disqualified)
+    : data.vendors;
 
   return (
     <div className="max-w-[102rem] mx-auto space-y-6 text-slate-900 pb-24 font-sans">
@@ -384,6 +431,22 @@ export default function ComparativeStatementPage() {
 
         {/* Action Bar */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Shortlist View Toggle */}
+          {disqualifiedCount > 0 && (
+            <button
+              onClick={() => setShowShortlistedOnly((p) => !p)}
+              className={`inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all border ${
+                showShortlistedOnly
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+              }`}
+              title="Toggle between all vendors and shortlisted vendors only"
+            >
+              <span>{showShortlistedOnly ? "✅" : "⚖️"}</span>
+              <span>{showShortlistedOnly ? `Shortlisted Only (${data.vendors.length - disqualifiedCount})` : `All Vendors (${disqualifiedCount} disqualified)`}</span>
+            </button>
+          )}
+
           {!data.is_locked ? (
             <button
               onClick={handleCloseTender}
@@ -617,19 +680,40 @@ export default function ComparativeStatementPage() {
                     <th colSpan={3} className="px-4 py-3 text-sm font-black uppercase tracking-wider bg-slate-950">
                       Comparative Particulars
                     </th>
-                    {data.vendors.map((v, idx) => (
+                    {visibleVendors.map((v, idx) => (
                       <th
                         key={v.submission_id}
                         colSpan={3}
                         className={`px-4 py-3 text-center border-l border-slate-700 font-black text-xs ${
-                          v.l_rank === "L1" ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-200"
+                          v.is_disqualified
+                            ? "bg-red-900 text-red-200"
+                            : v.l_rank === "L1" ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-200"
                         }`}
                       >
-                        <div className="flex items-center justify-center space-x-2">
-                          <span className="px-2 py-0.5 rounded bg-black/30 font-mono text-xs">
-                            {v.l_rank}
-                          </span>
-                          <span>Vendor {idx + 1}: {v.vendor_name}</span>
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center justify-center space-x-2">
+                            <span className="px-2 py-0.5 rounded bg-black/30 font-mono text-xs">
+                              {v.is_disqualified ? "DQ" : v.l_rank}
+                            </span>
+                            <span>Vendor {idx + 1}: {v.vendor_name}</span>
+                          </div>
+                          {v.is_disqualified ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="text-[9px] font-black uppercase tracking-widest bg-red-600 text-white px-2 py-0.5 rounded-full">⛔ DISQUALIFIED</span>
+                              {v.disqualification_note && (
+                                <span className="text-[9px] italic text-red-300 max-w-[160px] truncate" title={v.disqualification_note}>{v.disqualification_note}</span>
+                              )}
+                              <button
+                                onClick={() => openDisqualifyModal(v)}
+                                className="text-[9px] underline text-red-300 hover:text-white mt-0.5"
+                              >Edit / Reinstate</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => openDisqualifyModal(v)}
+                              className="text-[9px] text-slate-400 hover:text-red-300 underline transition-colors"
+                            >Disqualify</button>
+                          )}
                         </div>
                       </th>
                     ))}
@@ -640,8 +724,8 @@ export default function ComparativeStatementPage() {
                     <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
                       Name of Vendor:
                     </th>
-                    {data.vendors.map((v) => (
-                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 text-white font-bold">
+                    {visibleVendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className={`px-4 py-2 text-center border-l border-slate-700 font-bold ${v.is_disqualified ? "bg-red-950/60 text-red-300 line-through opacity-60" : "text-white"}`}>
                         {v.company_name || v.vendor_name}
                       </th>
                     ))}
@@ -652,8 +736,8 @@ export default function ComparativeStatementPage() {
                     <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
                       Contact Person & Phone:
                     </th>
-                    {data.vendors.map((v) => (
-                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 font-mono font-normal">
+                    {visibleVendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className={`px-4 py-2 text-center border-l border-slate-700 font-mono font-normal ${v.is_disqualified ? "opacity-40" : ""}`}>
                         {v.contact_no || v.primary_email || "-"}
                       </th>
                     ))}
@@ -664,8 +748,8 @@ export default function ComparativeStatementPage() {
                     <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
                       Model No / Make:
                     </th>
-                    {data.vendors.map((v) => (
-                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 font-semibold text-emerald-300">
+                    {visibleVendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className={`px-4 py-2 text-center border-l border-slate-700 font-semibold ${v.is_disqualified ? "opacity-40 text-red-300" : "text-emerald-300"}`}>
                         {v.model_no || "Liquid Medical Oxygen IP"}
                       </th>
                     ))}
@@ -676,8 +760,8 @@ export default function ComparativeStatementPage() {
                     <th colSpan={3} className="px-4 py-2 font-bold text-slate-400">
                       Tank Capacity & Location:
                     </th>
-                    {data.vendors.map((v) => (
-                      <th key={v.submission_id} colSpan={3} className="px-4 py-2 text-center border-l border-slate-700 text-blue-200">
+                    {visibleVendors.map((v) => (
+                      <th key={v.submission_id} colSpan={3} className={`px-4 py-2 text-center border-l border-slate-700 ${v.is_disqualified ? "opacity-40" : "text-blue-200"}`}>
                         {v.tank_capacity_location || "13 KL (PESO Approved Tank) at Hospital Campus"}
                       </th>
                     ))}
@@ -688,15 +772,15 @@ export default function ComparativeStatementPage() {
                     <th className="px-3 py-2 w-12 text-center">#</th>
                     <th className="px-4 py-2 min-w-[240px]">Item Description</th>
                     <th className="px-3 py-2 w-20 text-center">UOM</th>
-                    {data.vendors.map((v) => (
+                    {visibleVendors.map((v) => (
                       <Fragment key={v.submission_id}>
-                        <th className="px-3 py-2 w-28 text-right border-l border-slate-700">
+                        <th className={`px-3 py-2 w-28 text-right border-l border-slate-700 ${v.is_disqualified ? "opacity-40" : ""}`}>
                           Quoted (₹)
                         </th>
-                        <th className="px-3 py-2 w-28 text-right bg-blue-900/40 text-blue-200">
+                        <th className={`px-3 py-2 w-28 text-right bg-blue-900/40 text-blue-200 ${v.is_disqualified ? "opacity-40" : ""}`}>
                           Negotiated (₹)
                         </th>
-                        <th className="px-3 py-2 w-28 text-right">
+                        <th className={`px-3 py-2 w-28 text-right ${v.is_disqualified ? "opacity-40" : ""}`}>
                           Total Amount (₹)
                         </th>
                       </Fragment>
@@ -708,7 +792,7 @@ export default function ComparativeStatementPage() {
                 <tbody className="divide-y divide-slate-200 text-slate-800">
                   {/* PART 1: RECURRING SECTION HEADER */}
                   <tr className="bg-amber-100/70 font-black text-amber-950 border-t-2 border-amber-300">
-                    <td colSpan={3 + data.vendors.length * 3} className="px-4 py-2.5 uppercase tracking-wider text-xs">
+                    <td colSpan={3 + visibleVendors.length * 3} className="px-4 py-2.5 uppercase tracking-wider text-xs">
                       Part 1: Recurring Supply Charges (Gas & Consumables)
                     </td>
                   </tr>
@@ -736,8 +820,9 @@ export default function ComparativeStatementPage() {
                           {row.uom} ({row.quantity})
                         </td>
 
-                        {data.vendors.map((v) => {
+                        {visibleVendors.map((v) => {
                           const quote = row.vendor_quotes[v.submission_id];
+
                           const quotedPrice = quote?.initial_quoted_price || 0;
                           const negPrice = negotiatedRates[v.submission_id]?.[quote?.submission_item_id || ""] !== undefined
                             ? negotiatedRates[v.submission_id][quote?.submission_item_id || ""]
@@ -1722,6 +1807,90 @@ export default function ComparativeStatementPage() {
       {/* Close download menu on outside click */}
       {showDownloadMenu && (
         <div className="fixed inset-0 z-40" onClick={() => setShowDownloadMenu(false)} />
+      )}
+
+      {/* ============================================================ */}
+      {/* DISQUALIFICATION MODAL                                        */}
+      {/* ============================================================ */}
+      {disqualifyTarget && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            {/* Modal Header */}
+            <div className={`p-5 ${disqualifyTarget.is_disqualified ? "bg-orange-50 border-b border-orange-200" : "bg-red-50 border-b border-red-200"}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${disqualifyTarget.is_disqualified ? "bg-orange-100" : "bg-red-100"}`}>
+                    {disqualifyTarget.is_disqualified ? "🔄" : "⛔"}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">
+                      {disqualifyTarget.is_disqualified ? "Edit Disqualification" : "Disqualify Vendor"}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">{disqualifyTarget.vendor_name}</p>
+                  </div>
+                </div>
+                <button onClick={closeDisqualifyModal} className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 text-sm transition-colors">✕</button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Reason for Disqualification <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={disqualifyNote}
+                  onChange={(e) => setDisqualifyNote(e.target.value)}
+                  placeholder="e.g. Price too high, non-compliant with PESO norms, incomplete documentation..."
+                  rows={4}
+                  className="w-full text-xs border border-slate-300 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 resize-none text-slate-800 placeholder:text-slate-400"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  This note will be saved and shown on the comparison column header for reference.
+                </p>
+              </div>
+
+              {disqualifyTarget.is_disqualified && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <p className="text-xs font-semibold text-emerald-800">
+                    ✅ You can also <strong>reinstate</strong> this vendor — it will remove the disqualification flag and note.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 pb-5 flex items-center justify-between gap-3">
+              <div className="flex gap-2">
+                {disqualifyTarget.is_disqualified && (
+                  <button
+                    onClick={() => handleSaveDisqualify(false)}
+                    disabled={isSavingDisqualify}
+                    className="px-4 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-colors disabled:opacity-50"
+                  >
+                    {isSavingDisqualify ? "Saving..." : "✅ Reinstate Vendor"}
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2 ml-auto">
+                <button
+                  onClick={closeDisqualifyModal}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleSaveDisqualify(true)}
+                  disabled={isSavingDisqualify || !disqualifyNote.trim()}
+                  className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-50 shadow-sm"
+                >
+                  {isSavingDisqualify ? "Saving..." : "⛔ Confirm Disqualify"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Print-only CSS for PDF export */}
