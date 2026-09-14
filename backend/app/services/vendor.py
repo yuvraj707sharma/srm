@@ -17,8 +17,7 @@ class VendorService:
             selectinload(VendorOrganization.contacts),
             selectinload(VendorOrganization.bank_details),
             selectinload(VendorOrganization.financials),
-            selectinload(VendorOrganization.projects),
-            selectinload(VendorOrganization.evaluations)
+            selectinload(VendorOrganization.projects)
         ).where(VendorOrganization.id == vendor_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()

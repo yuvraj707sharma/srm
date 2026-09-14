@@ -59,6 +59,127 @@ export default function AdminVendorsPage() {
   const [savingEval, setSavingEval] = useState<boolean>(false);
   const [evalMsg, setEvalMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Criteria Configuration & Auto-Evaluation
+  const [showCriteriaModal, setShowCriteriaModal] = useState<boolean>(false);
+  const [criteriaConfig, setCriteriaConfig] = useState<any>({
+    hospitals: {
+      title: "1. Hospital Projects (>300 Beds in last 3 FYs)",
+      description: "Number of Projects delivered in the last 3 years in Hospitals with more than 300 Beds (FY 2025-26, FY 2024-25 and FY 2023-24) with name of Medical College/Hospital, Project Cost and Project duration.",
+      min_bed_count: 300,
+      min_projects_count: 1,
+      weight_points: 20,
+    },
+    turnover: {
+      title: "2. Company Annual Turnover (Last 3 FYs)",
+      description: "Turnover of the Company in the last 3 years (FY 2025-26, FY 2024-25 and FY 2023-24).",
+      min_avg_turnover_cr: 5.0,
+      weight_points: 20,
+    },
+    high_value: {
+      title: "3. High-Value Projects Delivered",
+      description: "Number of Projects delivered with Project Cost of more than specified threshold.",
+      threshold_cr: 1.0,
+      min_count: 1,
+      weight_points: 20,
+    },
+    service_base: {
+      title: "4. Infrastructure / Service Base in Jaipur / Rajasthan",
+      description: "Infrastructure/ Service base at Jaipur and/ Rajasthan for prompt on-site maintenance and support.",
+      required_location: "Jaipur / Rajasthan",
+      weight_points: 20,
+    },
+    balance_sheet: {
+      title: "5. Audited Balance Sheet (FY 2024-25)",
+      description: "Audited Balance Sheet for FY 2024-25 with Chartered Accountant (CA) stamp and certification.",
+      required_fy: "FY 2024-25",
+      weight_points: 20,
+    }
+  });
+  const [savingCriteria, setSavingCriteria] = useState<boolean>(false);
+  const [autoEvaluating, setAutoEvaluating] = useState<boolean>(false);
+  const [criteriaMsg, setCriteriaMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState<boolean>(false);
+
+  const loadCriteria = async () => {
+    try {
+      const res = await fetchApi("/api/v1/admin/vendors/evaluation/criteria");
+      if (res.ok) {
+        const data = await res.json();
+        setCriteriaConfig(data);
+      }
+    } catch (e) {
+      console.error("Failed to load criteria:", e);
+    }
+  };
+
+  const handleSaveCriteria = async () => {
+    try {
+      setSavingCriteria(true);
+      setCriteriaMsg(null);
+      const res = await fetchApi("/api/v1/admin/vendors/evaluation/criteria", {
+        method: "POST",
+        body: JSON.stringify(criteriaConfig)
+      });
+      if (res.ok) {
+        setCriteriaMsg({ type: "success", text: "Evaluation criteria rules successfully updated!" });
+      } else {
+        setCriteriaMsg({ type: "error", text: "Failed to save criteria." });
+      }
+    } catch (e) {
+      console.error(e);
+      setCriteriaMsg({ type: "error", text: "Network error saving criteria." });
+    } finally {
+      setSavingCriteria(false);
+    }
+  };
+
+  const handleAutoEvaluateAll = async () => {
+    try {
+      setAutoEvaluating(true);
+      setCriteriaMsg(null);
+      await fetchApi("/api/v1/admin/vendors/evaluation/criteria", {
+        method: "POST",
+        body: JSON.stringify(criteriaConfig)
+      });
+      const res = await fetchApi("/api/v1/admin/vendors/evaluation/auto-evaluate-all", {
+        method: "POST"
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCriteriaMsg({ type: "success", text: `Success! ${data.message} All vendors have been scored and ranked.` });
+        loadVendors();
+      } else {
+        setCriteriaMsg({ type: "error", text: "Auto-evaluation failed." });
+      }
+    } catch (e) {
+      console.error(e);
+      setCriteriaMsg({ type: "error", text: "Network error during auto-evaluation." });
+    } finally {
+      setAutoEvaluating(false);
+    }
+  };
+
+  const copyEmailTemplate = () => {
+    const text = `Dear Prospective Vendor,
+
+Please submit your details along with the required documents for vendor empanelment against the following 5 criteria:
+
+1. ${criteriaConfig.hospitals?.description || "Number of Projects delivered in the last 3 years in Hospitals with more than 300 Beds (FY 2025-26, FY 2024-25 and FY 2023-24) with name of the Medical College/ Hospital, Project Cost and Project duration."}
+2. ${criteriaConfig.turnover?.description || "Turnover of the Company in the last 3 years (FY 2025-26, FY 2024-25 and FY 2023-24)."} (Minimum required average: ₹${criteriaConfig.turnover?.min_avg_turnover_cr || 5.0} Cr)
+3. ${criteriaConfig.high_value?.description || "Number of Projects delivered with Project Cost of more than specified threshold."} (Threshold: > ₹${criteriaConfig.high_value?.threshold_cr || 1.0} Cr)
+4. ${criteriaConfig.service_base?.description || "Infrastructure/ Service base at Jaipur and/ Rajasthan."}
+5. ${criteriaConfig.balance_sheet?.description || "Audited Balance Sheet for FY 2024-25."}
+
+Please register and upload supporting documents on the Vendor Portal.
+
+Regards,
+Procurement & Empanelment Committee`;
+
+    navigator.clipboard.writeText(text);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 3000);
+  };
+
   // Auth/Role Check
   const [isAuthorized, setIsAuthorized] = useState<boolean>(true);
   const [authChecking, setAuthChecking] = useState<boolean>(true);
@@ -1609,6 +1730,15 @@ export default function AdminVendorsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                <button
+                  onClick={() => { setShowCriteriaModal(true); loadCriteria(); }}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Configure and evaluate the 5 criteria for vendor empanelment"
+                >
+                  <span className="text-sm">⚙️</span>
+                  <span>5 Empanelment Criteria & Rules</span>
+                </button>
+
                 <div className="flex items-center space-x-2">
                   <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Sort:</span>
                   <select
@@ -1808,6 +1938,395 @@ export default function AdminVendorsPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {/* Vendor Empanelment Criteria & Rules Modal */}
+            {showCriteriaModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/75 backdrop-blur-xs p-4 sm:p-6 animate-fade-in">
+                <div className="bg-white w-full max-w-4xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100">
+                  {/* Modal Header */}
+                  <div className="px-6 py-4 bg-gradient-to-r from-blue-700 via-indigo-700 to-indigo-800 text-white flex justify-between items-center">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">⚙️</span>
+                        <h3 className="text-lg font-bold">5 Empanelment Criteria &amp; Benchmark Rules</h3>
+                      </div>
+                      <p className="text-xs text-blue-100 mt-0.5">
+                        These 5 criteria are sent to vendors via email. Configure benchmark thresholds and automatically evaluate all vendors against them.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setShowCriteriaModal(false); setCriteriaMsg(null); }}
+                      className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors cursor-pointer"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                  </div>
+
+                  {/* Feedback Message */}
+                  {criteriaMsg && (
+                    <div className={`px-6 py-3 text-sm font-semibold flex items-center justify-between ${
+                      criteriaMsg.type === "success" ? "bg-green-50 text-green-800 border-b border-green-200" : "bg-red-50 text-red-800 border-b border-red-200"
+                    }`}>
+                      <span>{criteriaMsg.text}</span>
+                      <button onClick={() => setCriteriaMsg(null)} className="text-xs underline ml-4 cursor-pointer">Dismiss</button>
+                    </div>
+                  )}
+
+                  {/* Modal Scrollable Content */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50">
+                    
+                    {/* Instructions Banner */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="text-xs text-blue-900 leading-relaxed">
+                        <p className="font-bold mb-1">✉️ How this works:</p>
+                        <ul className="list-disc list-inside space-y-0.5 text-blue-800">
+                          <li>Click <strong>&quot;Copy Vendor Email Template&quot;</strong> to send these 5 questions to prospective vendors.</li>
+                          <li>When vendors register and enter their data, click <strong>&quot;⚡ Run Auto-Evaluation on All Vendors&quot;</strong> to automatically calculate scores (out of 100) and rank the best vendor.</li>
+                        </ul>
+                      </div>
+                      <button
+                        onClick={copyEmailTemplate}
+                        className="shrink-0 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>{copiedEmail ? "✓ Copied to Clipboard!" : "📋 Copy Email Template"}</span>
+                      </button>
+                    </div>
+
+                    {/* Criteria Cards */}
+                    <div className="space-y-4">
+                      {/* CRITERION 1 */}
+                      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full">
+                            Criterion 1
+                          </span>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-bold">
+                            <span>Score Weight:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.hospitals?.weight_points ?? 20}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                hospitals: { ...criteriaConfig.hospitals, weight_points: Number(e.target.value) }
+                              })}
+                              className="w-16 p-1 border rounded text-center font-bold text-gray-800"
+                            />
+                            <span>pts</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-bold text-gray-900 block mb-1">
+                            Hospital Projects in Hospitals with &gt;300 Beds (Last 3 Financial Years)
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={criteriaConfig.hospitals?.description || ""}
+                            onChange={(e) => setCriteriaConfig({
+                              ...criteriaConfig,
+                              hospitals: { ...criteriaConfig.hospitals, description: e.target.value }
+                            })}
+                            className="w-full p-2.5 border border-gray-300 rounded-lg text-xs text-gray-700 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="text-xs">
+                            <span className="font-semibold text-gray-600">Minimum Bed Count per Hospital:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.hospitals?.min_bed_count ?? 300}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                hospitals: { ...criteriaConfig.hospitals, min_bed_count: Number(e.target.value) }
+                              })}
+                              className="mt-1 w-full p-2 border border-gray-300 rounded-lg font-mono font-bold text-gray-800"
+                            />
+                          </div>
+                          <div className="text-xs">
+                            <span className="font-semibold text-gray-600">Minimum Completed Hospital Projects:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.hospitals?.min_projects_count ?? 1}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                hospitals: { ...criteriaConfig.hospitals, min_projects_count: Number(e.target.value) }
+                              })}
+                              className="mt-1 w-full p-2 border border-gray-300 rounded-lg font-mono font-bold text-gray-800"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CRITERION 2 */}
+                      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold uppercase tracking-wider text-green-700 bg-green-50 px-2.5 py-0.5 rounded-full">
+                            Criterion 2
+                          </span>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-bold">
+                            <span>Score Weight:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.turnover?.weight_points ?? 20}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                turnover: { ...criteriaConfig.turnover, weight_points: Number(e.target.value) }
+                              })}
+                              className="w-16 p-1 border rounded text-center font-bold text-gray-800"
+                            />
+                            <span>pts</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-bold text-gray-900 block mb-1">
+                            Company Turnover in the Last 3 Years (FY 2025-26, 2024-25, 2023-24)
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={criteriaConfig.turnover?.description || ""}
+                            onChange={(e) => setCriteriaConfig({
+                              ...criteriaConfig,
+                              turnover: { ...criteriaConfig.turnover, description: e.target.value }
+                            })}
+                            className="w-full p-2.5 border border-gray-300 rounded-lg text-xs text-gray-700 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="text-xs">
+                            <span className="font-semibold text-gray-600">Required 3-Year Avg Turnover (INR Crores):</span>
+                            <div className="relative mt-1">
+                              <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-gray-400 font-bold">₹</span>
+                              <input
+                                type="number"
+                                step="0.5"
+                                value={criteriaConfig.turnover?.min_avg_turnover_cr ?? 5.0}
+                                onChange={(e) => setCriteriaConfig({
+                                  ...criteriaConfig,
+                                  turnover: { ...criteriaConfig.turnover, min_avg_turnover_cr: Number(e.target.value) }
+                                })}
+                                className="w-full pl-7 pr-12 p-2 border border-gray-300 rounded-lg font-mono font-bold text-gray-800"
+                              />
+                              <span className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 font-bold">Cr</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CRITERION 3 */}
+                      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full">
+                            Criterion 3
+                          </span>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-bold">
+                            <span>Score Weight:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.high_value?.weight_points ?? 20}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                high_value: { ...criteriaConfig.high_value, weight_points: Number(e.target.value) }
+                              })}
+                              className="w-16 p-1 border rounded text-center font-bold text-gray-800"
+                            />
+                            <span>pts</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-bold text-gray-900 block mb-1">
+                            High-Value Projects Delivered (Project Cost Exceeding Threshold)
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={criteriaConfig.high_value?.description || ""}
+                            onChange={(e) => setCriteriaConfig({
+                              ...criteriaConfig,
+                              high_value: { ...criteriaConfig.high_value, description: e.target.value }
+                            })}
+                            className="w-full p-2.5 border border-gray-300 rounded-lg text-xs text-gray-700 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="text-xs">
+                            <span className="font-semibold text-gray-600">High-Value Project Cost Threshold (INR Crores):</span>
+                            <div className="relative mt-1">
+                              <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-gray-400 font-bold">₹</span>
+                              <input
+                                type="number"
+                                step="0.5"
+                                value={criteriaConfig.high_value?.threshold_cr ?? 1.0}
+                                onChange={(e) => setCriteriaConfig({
+                                  ...criteriaConfig,
+                                  high_value: { ...criteriaConfig.high_value, threshold_cr: Number(e.target.value) }
+                                })}
+                                className="w-full pl-7 pr-12 p-2 border border-gray-300 rounded-lg font-mono font-bold text-gray-800"
+                              />
+                              <span className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 font-bold">Cr</span>
+                            </div>
+                          </div>
+                          <div className="text-xs">
+                            <span className="font-semibold text-gray-600">Minimum Projects Meeting Threshold:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.high_value?.min_count ?? 1}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                high_value: { ...criteriaConfig.high_value, min_count: Number(e.target.value) }
+                              })}
+                              className="mt-1 w-full p-2 border border-gray-300 rounded-lg font-mono font-bold text-gray-800"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CRITERION 4 */}
+                      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full">
+                            Criterion 4
+                          </span>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-bold">
+                            <span>Score Weight:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.service_base?.weight_points ?? 20}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                service_base: { ...criteriaConfig.service_base, weight_points: Number(e.target.value) }
+                              })}
+                              className="w-16 p-1 border rounded text-center font-bold text-gray-800"
+                            />
+                            <span>pts</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-bold text-gray-900 block mb-1">
+                            Infrastructure &amp; Service Base at Jaipur and/or Rajasthan
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={criteriaConfig.service_base?.description || ""}
+                            onChange={(e) => setCriteriaConfig({
+                              ...criteriaConfig,
+                              service_base: { ...criteriaConfig.service_base, description: e.target.value }
+                            })}
+                            className="w-full p-2.5 border border-gray-300 rounded-lg text-xs text-gray-700 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                          />
+                        </div>
+                        <div className="text-xs">
+                          <span className="font-semibold text-gray-600">Mandatory Service Base Location:</span>
+                          <input
+                            type="text"
+                            value={criteriaConfig.service_base?.required_location || "Jaipur / Rajasthan"}
+                            onChange={(e) => setCriteriaConfig({
+                              ...criteriaConfig,
+                              service_base: { ...criteriaConfig.service_base, required_location: e.target.value }
+                            })}
+                            className="mt-1 w-full p-2 border border-gray-300 rounded-lg font-bold text-gray-800"
+                          />
+                        </div>
+                      </div>
+
+                      {/* CRITERION 5 */}
+                      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full">
+                            Criterion 5
+                          </span>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-bold">
+                            <span>Score Weight:</span>
+                            <input
+                              type="number"
+                              value={criteriaConfig.balance_sheet?.weight_points ?? 20}
+                              onChange={(e) => setCriteriaConfig({
+                                ...criteriaConfig,
+                                balance_sheet: { ...criteriaConfig.balance_sheet, weight_points: Number(e.target.value) }
+                              })}
+                              className="w-16 p-1 border rounded text-center font-bold text-gray-800"
+                            />
+                            <span>pts</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-bold text-gray-900 block mb-1">
+                            Audited Balance Sheet for FY 2024-25 (with CA Stamp &amp; Certificate)
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={criteriaConfig.balance_sheet?.description || ""}
+                            onChange={(e) => setCriteriaConfig({
+                              ...criteriaConfig,
+                              balance_sheet: { ...criteriaConfig.balance_sheet, description: e.target.value }
+                            })}
+                            className="w-full p-2.5 border border-gray-300 rounded-lg text-xs text-gray-700 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                          />
+                        </div>
+                        <div className="text-xs">
+                          <span className="font-semibold text-gray-600">Required Audit Document Year:</span>
+                          <input
+                            type="text"
+                            value={criteriaConfig.balance_sheet?.required_fy || "FY 2024-25"}
+                            onChange={(e) => setCriteriaConfig({
+                              ...criteriaConfig,
+                              balance_sheet: { ...criteriaConfig.balance_sheet, required_fy: e.target.value }
+                            })}
+                            className="mt-1 w-full p-2 border border-gray-300 rounded-lg font-bold text-gray-800"
+                          />
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="px-6 py-4 bg-gray-100 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <div className="text-xs text-gray-500">
+                      Total Points: <span className="font-bold text-gray-800">
+                        {((criteriaConfig.hospitals?.weight_points ?? 20) +
+                          (criteriaConfig.turnover?.weight_points ?? 20) +
+                          (criteriaConfig.high_value?.weight_points ?? 20) +
+                          (criteriaConfig.service_base?.weight_points ?? 20) +
+                          (criteriaConfig.balance_sheet?.weight_points ?? 20))}
+                      </span> / 100
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <button
+                        onClick={() => { setShowCriteriaModal(false); setCriteriaMsg(null); }}
+                        className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        onClick={handleSaveCriteria}
+                        disabled={savingCriteria || autoEvaluating}
+                        className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-xl text-xs font-bold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {savingCriteria ? "Saving..." : "💾 Save Benchmarks"}
+                      </button>
+
+                      <button
+                        onClick={handleAutoEvaluateAll}
+                        disabled={autoEvaluating || savingCriteria}
+                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        {autoEvaluating ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Evaluating All Vendors...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>⚡</span>
+                            <span>Run Auto-Evaluation on All Vendors</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
               </div>
             )}
           </div>

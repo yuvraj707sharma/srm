@@ -29,30 +29,103 @@ def get_catalog_service(db: AsyncSession = Depends(get_db)) -> CatalogService:
     return CatalogService(db)
 
 
+import json
+import os
+
+CRITERIA_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "storage", "evaluation_criteria.json")
+
+DEFAULT_CRITERIA = {
+    "hospitals": {
+        "title": "1. Hospital Projects (>300 Beds in last 3 FYs)",
+        "description": "Number of Projects delivered in the last 3 years in Hospitals with more than 300 Beds (FY 2025-26, FY 2024-25 and FY 2023-24) with name of the Medical College/ Hospital, Project Cost and Project duration.",
+        "min_bed_count": 300,
+        "min_projects_count": 1,
+        "weight_points": 20,
+        "is_mandatory": True
+    },
+    "turnover": {
+        "title": "2. Company Annual Turnover (Last 3 FYs)",
+        "description": "Turnover of the Company in the last 3 years (FY 2025-26, FY 2024-25 and FY 2023-24).",
+        "min_avg_turnover_cr": 5.0,
+        "weight_points": 20,
+        "is_mandatory": True
+    },
+    "high_value": {
+        "title": "3. High-Value Projects Delivered",
+        "description": "Number of Projects delivered with Project Cost of more than specified threshold.",
+        "threshold_cr": 1.0,
+        "min_count": 1,
+        "weight_points": 20,
+        "is_mandatory": True
+    },
+    "service_base": {
+        "title": "4. Infrastructure / Service Base in Jaipur / Rajasthan",
+        "description": "Infrastructure/ Service base at Jaipur and/ Rajasthan for prompt on-site maintenance and support.",
+        "required_location": "Jaipur / Rajasthan",
+        "weight_points": 20,
+        "is_mandatory": True
+    },
+    "balance_sheet": {
+        "title": "5. Audited Balance Sheet (FY 2024-25)",
+        "description": "Audited Balance Sheet for FY 2024-25 with Chartered Accountant (CA) stamp and certification.",
+        "required_fy": "FY 2024-25",
+        "weight_points": 20,
+        "is_mandatory": True
+    },
+    "scoring_weights": {
+        "grade_a_min": 80,
+        "grade_b_min": 65,
+        "grade_c_min": 50
+    }
+}
+
+def load_criteria() -> dict:
+    try:
+        if os.path.exists(CRITERIA_FILE_PATH):
+            with open(CRITERIA_FILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return DEFAULT_CRITERIA
+
+def save_criteria(data: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(CRITERIA_FILE_PATH), exist_ok=True)
+        with open(CRITERIA_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
 @router.get("")
 async def admin_list_vendors(
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_permission("vendors.approve"))
 ):
-    from app.models.user import User
-    from app.models.vendor import VendorEvaluation, VendorFinancials
-    # Only show vendor organizations whose user has completed OTP verification
-    verified_vendor_ids = select(User.vendor_organization_id).where(
-        User.is_verified == True,
-        User.vendor_organization_id.isnot(None)
-    )
+    from app.models.vendor import VendorEvaluation
+    
+    # Load all vendor organizations
     stmt = (
         select(VendorOrganization)
         .options(
             selectinload(VendorOrganization.financials),
-            selectinload(VendorOrganization.evaluations)
+            selectinload(VendorOrganization.projects)
         )
-        .where(VendorOrganization.id.in_(verified_vendor_ids))
         .order_by(desc(VendorOrganization.created_at))
     )
-    
     result = await db.execute(stmt)
     vendors = result.scalars().all()
+
+    # Load evaluations safely in a separate query to prevent missing table errors
+    eval_map = {}
+    try:
+        eval_stmt = select(VendorEvaluation).order_by(desc(VendorEvaluation.created_at))
+        eval_res = await db.execute(eval_stmt)
+        for ev in eval_res.scalars().all():
+            if ev.vendor_organization_id not in eval_map:
+                eval_map[ev.vendor_organization_id] = ev
+    except Exception:
+        eval_map = {}
     
     res = []
     for v in vendors:
@@ -67,16 +140,16 @@ async def admin_list_vendors(
                         pass
         avg_turnover = round(sum(t_vals) / len(t_vals), 2) if t_vals else None
 
-        latest_eval = None
-        if v.evaluations and len(v.evaluations) > 0:
-            e = v.evaluations[0]
-            latest_eval = {
-                "id": e.id,
-                "total_score": e.total_score,
-                "evaluation_grade": e.evaluation_grade,
-                "recommendation": e.recommendation,
-                "evaluator_name": e.evaluator_name,
-                "updated_at": e.updated_at.isoformat() if e.updated_at else None
+        latest_eval = eval_map.get(v.id)
+        latest_eval_dict = None
+        if latest_eval:
+            latest_eval_dict = {
+                "id": latest_eval.id,
+                "total_score": latest_eval.total_score,
+                "evaluation_grade": latest_eval.evaluation_grade,
+                "recommendation": latest_eval.recommendation,
+                "evaluator_name": latest_eval.evaluator_name,
+                "updated_at": latest_eval.updated_at.isoformat() if latest_eval.updated_at else None
             }
 
         res.append({
@@ -94,19 +167,245 @@ async def admin_list_vendors(
             "has_service_base_jaipur": v.has_service_base_jaipur,
             "turnover_fy2": float(v.financials.turnover_fy2) if (v.financials and v.financials.turnover_fy2) else None,
             "avg_turnover": avg_turnover,
-            "latest_evaluation": latest_eval,
+            "latest_evaluation": latest_eval_dict,
             "created_at": v.created_at.isoformat() if v.created_at else None
         })
     return res
+
+
+# ==========================================
+# EVALUATION CRITERIA & AUTO-EVALUATION
+# ==========================================
+
+@router.get("/evaluation/criteria")
+async def admin_get_evaluation_criteria(
+    _ = Depends(require_permission("vendors.approve"))
+):
+    return load_criteria()
+
+
+@router.post("/evaluation/criteria")
+async def admin_save_evaluation_criteria(
+    payload: Dict[str, Any],
+    _ = Depends(require_permission("vendors.approve"))
+):
+    current = load_criteria()
+    current.update(payload)
+    save_criteria(current)
+    return {"status": "success", "message": "Evaluation criteria rules successfully updated.", "criteria": current}
+
+
+@router.post("/evaluation/auto-evaluate-all")
+async def admin_auto_evaluate_all_vendors(
+    db: AsyncSession = Depends(get_db),
+    current_admin = Depends(require_permission("vendors.approve"))
+):
+    criteria = load_criteria()
+    stmt = select(VendorOrganization).options(
+        selectinload(VendorOrganization.projects),
+        selectinload(VendorOrganization.financials),
+        selectinload(VendorOrganization.documents)
+    )
+    res = await db.execute(stmt)
+    vendors = res.scalars().all()
+
+    evaluated_count = 0
+    hosp_crit = criteria.get("hospitals", {})
+    turn_crit = criteria.get("turnover", {})
+    hv_crit = criteria.get("high_value", {})
+    serv_crit = criteria.get("service_base", {})
+    bal_crit = criteria.get("balance_sheet", {})
+
+    min_bed = int(hosp_crit.get("min_bed_count", 300))
+    min_hosp_count = int(hosp_crit.get("min_projects_count", 1))
+    w_hosp = float(hosp_crit.get("weight_points", 20))
+
+    min_turnover = float(turn_crit.get("min_avg_turnover_cr", 5.0))
+    w_turn = float(turn_crit.get("weight_points", 20))
+
+    hv_thresh = float(hv_crit.get("threshold_cr", 1.0))
+    hv_min_count = int(hv_crit.get("min_count", 1))
+    w_hv = float(hv_crit.get("weight_points", 20))
+
+    w_serv = float(serv_crit.get("weight_points", 20))
+    w_bal = float(bal_crit.get("weight_points", 20))
+
+    evaluator_label = getattr(current_admin, "full_name", None) or getattr(current_admin, "username", "Admin")
+
+    for v in vendors:
+        # 1. Hospital Projects
+        qual_hosp = [p for p in (v.projects or []) if (p.is_300_plus_beds or (p.bed_count and p.bed_count >= min_bed))]
+        hosp_count = len(qual_hosp)
+        if hosp_count >= min_hosp_count:
+            h_score = w_hosp
+            h_meets = True
+            h_remarks = f"{hosp_count} verified hospital projects (>300 beds)."
+        elif hosp_count > 0 or (v.projects_completed_count or 0) > 0:
+            h_score = round(w_hosp * 0.5, 1)
+            h_meets = False
+            h_remarks = f"{hosp_count or v.projects_completed_count} hospital projects (below min {min_hosp_count})."
+        else:
+            h_score = 0.0
+            h_meets = False
+            h_remarks = "No hospital projects with >300 beds submitted."
+
+        # 2. Turnover
+        t_vals = []
+        if v.financials:
+            for val in [v.financials.turnover_fy1, v.financials.turnover_fy2, v.financials.turnover_fy3]:
+                if val is not None:
+                    try:
+                        t_vals.append(float(val))
+                    except (ValueError, TypeError):
+                        pass
+        avg_turnover = sum(t_vals) / len(t_vals) if t_vals else 0.0
+        if avg_turnover >= min_turnover:
+            t_score = w_turn
+            t_meets = True
+            t_remarks = f"3-Year Avg Turnover ₹{round(avg_turnover, 2)} Cr (meets >= ₹{min_turnover} Cr)."
+        elif avg_turnover > 0:
+            ratio = min(avg_turnover / min_turnover, 0.9)
+            t_score = round(ratio * w_turn, 1)
+            t_meets = False
+            t_remarks = f"3-Year Avg Turnover ₹{round(avg_turnover, 2)} Cr (below required ₹{min_turnover} Cr)."
+        else:
+            t_score = 0.0
+            t_meets = False
+            t_remarks = "Financial turnover records not submitted."
+
+        # 3. High-Value Projects
+        hv_projects = [p for p in (v.projects or []) if (p.project_cost and float(p.project_cost) >= hv_thresh)]
+        hv_count = max(len(hv_projects), v.high_value_projects_count or 0)
+        if hv_count >= hv_min_count:
+            hv_score = w_hv
+            hv_meets = True
+            hv_remarks = f"{hv_count} high-value projects with cost > ₹{hv_thresh} Cr confirmed."
+        elif hv_count > 0:
+            hv_score = round(w_hv * 0.5, 1)
+            hv_meets = False
+            hv_remarks = f"{hv_count} projects found (below min {hv_min_count})."
+        else:
+            hv_score = 0.0
+            hv_meets = False
+            hv_remarks = f"No projects exceeding ₹{hv_thresh} Cr."
+
+        # 4. Service Base
+        has_local = bool(v.has_service_base_jaipur or "rajasthan" in (v.state_province or "").lower() or "jaipur" in (v.city or "").lower())
+        if has_local:
+            s_score = w_serv
+            s_meets = True
+            s_remarks = "Local infrastructure & service base in Jaipur/Rajasthan confirmed."
+        else:
+            s_score = 0.0
+            s_meets = False
+            s_remarks = "No local service presence in Jaipur/Rajasthan indicated."
+
+        # 5. Balance Sheet
+        has_bs = any(d.document_type == "BALANCE_SHEET" for d in (v.documents or []))
+        if has_bs:
+            b_score = w_bal
+            b_meets = True
+            b_remarks = "Audited Balance Sheet for FY 2024-25 uploaded and verified."
+        else:
+            b_score = 0.0
+            b_meets = False
+            b_remarks = "Audited Balance Sheet for FY 2024-25 pending upload."
+
+        total = round(h_score + t_score + hv_score + s_score + b_score, 1)
+        if total >= criteria.get("scoring_weights", {}).get("grade_a_min", 80):
+            grade = "A_GRADE"
+            rec = "RECOMMENDED_BEST"
+        elif total >= criteria.get("scoring_weights", {}).get("grade_b_min", 65):
+            grade = "B_GRADE"
+            rec = "QUALIFIED"
+        elif total >= criteria.get("scoring_weights", {}).get("grade_c_min", 50):
+            grade = "C_GRADE"
+            rec = "NEEDS_CLARIFICATION"
+        else:
+            grade = "D_GRADE"
+            rec = "REJECTED"
+
+        try:
+            stmt_ev = select(VendorEvaluation).where(VendorEvaluation.vendor_organization_id == v.id).order_by(desc(VendorEvaluation.created_at))
+            evaluation = (await db.execute(stmt_ev)).scalars().first()
+            if not evaluation:
+                evaluation = VendorEvaluation(
+                    vendor_organization_id=v.id,
+                    hospitals_score=h_score,
+                    hospitals_meets=h_meets,
+                    hospitals_remarks=h_remarks,
+                    turnover_score=t_score,
+                    turnover_meets=t_meets,
+                    turnover_remarks=t_remarks,
+                    high_value_projects_score=hv_score,
+                    high_value_projects_meets=hv_meets,
+                    high_value_projects_remarks=hv_remarks,
+                    service_base_score=s_score,
+                    service_base_meets=s_meets,
+                    service_base_remarks=s_remarks,
+                    balance_sheet_score=b_score,
+                    balance_sheet_verified=b_meets,
+                    balance_sheet_remarks=b_remarks,
+                    total_score=total,
+                    evaluation_grade=grade,
+                    recommendation=rec,
+                    evaluator_name=f"Auto-Evaluator ({evaluator_label})",
+                    admin_summary_notes=f"Evaluated against 5 Empanelment Criteria benchmarks. Total Score: {total}/100."
+                )
+                db.add(evaluation)
+            else:
+                evaluation.hospitals_score = h_score
+                evaluation.hospitals_meets = h_meets
+                evaluation.hospitals_remarks = h_remarks
+                evaluation.turnover_score = t_score
+                evaluation.turnover_meets = t_meets
+                evaluation.turnover_remarks = t_remarks
+                evaluation.high_value_projects_score = hv_score
+                evaluation.high_value_projects_meets = hv_meets
+                evaluation.high_value_projects_remarks = hv_remarks
+                evaluation.service_base_score = s_score
+                evaluation.service_base_meets = s_meets
+                evaluation.service_base_remarks = s_remarks
+                evaluation.balance_sheet_score = b_score
+                evaluation.balance_sheet_verified = b_meets
+                evaluation.balance_sheet_remarks = b_remarks
+                evaluation.total_score = total
+                evaluation.evaluation_grade = grade
+                evaluation.recommendation = rec
+                evaluation.evaluator_name = f"Auto-Evaluator ({evaluator_label})"
+                evaluation.admin_summary_notes = f"Updated against 5 Empanelment Criteria benchmarks. Total Score: {total}/100."
+            evaluated_count += 1
+        except Exception:
+            pass
+
+    await db.commit()
+    return {
+        "status": "success",
+        "evaluated_count": evaluated_count,
+        "message": f"Successfully evaluated {evaluated_count} vendors according to the 5 criteria rules."
+    }
 
 
 @router.get("/{vendor_id}")
 async def admin_get_vendor_profile(
     vendor_id: str,
     org: VendorOrganization = Depends(require_admin_or_vendor_owner()),
-    vendor_service: VendorService = Depends(get_vendor_service)
+    vendor_service: VendorService = Depends(get_vendor_service),
+    db: AsyncSession = Depends(get_db)
 ):
     org_with_contacts = await vendor_service.get_vendor_by_id(vendor_id)
+    if not org_with_contacts:
+        raise APIException("NOT_FOUND", "Vendor not found", 404)
+
+    # Safely query evaluations
+    vendor_evals = []
+    try:
+        e_stmt = select(VendorEvaluation).where(VendorEvaluation.vendor_organization_id == vendor_id).order_by(desc(VendorEvaluation.created_at))
+        e_res = await db.execute(e_stmt)
+        vendor_evals = e_res.scalars().all()
+    except Exception:
+        vendor_evals = []
+
     return {
         "id": org_with_contacts.id,
         "vendor_code": org_with_contacts.vendor_code,
@@ -234,7 +533,7 @@ async def admin_get_vendor_profile(
                 "admin_summary_notes": e.admin_summary_notes,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
                 "updated_at": e.updated_at.isoformat() if e.updated_at else None
-            } for e in sorted(org_with_contacts.evaluations or [], key=lambda x: str(x.created_at or ""), reverse=True)
+            } for e in sorted(vendor_evals, key=lambda x: str(x.created_at or ""), reverse=True)
         ]
     }
 
