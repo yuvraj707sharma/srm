@@ -73,6 +73,7 @@ class VendorOrganization(Base):
     years_in_business: Mapped[int | None] = mapped_column(Integer, nullable=True)
     projects_completed_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     high_value_projects_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    high_value_projects_threshold_cr: Mapped[float | None] = mapped_column(Float, nullable=True, default=1.0)
     has_service_base_jaipur: Mapped[bool] = mapped_column(Boolean, default=False)
     
     is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -98,6 +99,7 @@ class VendorOrganization(Base):
     projects: Mapped[list["VendorProjectHistory"]] = relationship("VendorProjectHistory", back_populates="vendor_organization", cascade="all, delete-orphan")
     financials: Mapped["VendorFinancials"] = relationship("VendorFinancials", back_populates="vendor_organization", uselist=False, cascade="all, delete-orphan")
     documents: Mapped[list["VendorDocument"]] = relationship("VendorDocument", back_populates="vendor_organization", cascade="all, delete-orphan")
+    evaluations: Mapped[list["VendorEvaluation"]] = relationship("VendorEvaluation", back_populates="vendor_organization", cascade="all, delete-orphan")
 
 
 class VendorContact(Base):
@@ -199,3 +201,48 @@ class VendorDocument(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     vendor_organization: Mapped["VendorOrganization"] = relationship("VendorOrganization", back_populates="documents")
+
+
+class VendorEvaluation(Base):
+    __tablename__ = "vendor_evaluations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    vendor_organization_id: Mapped[str] = mapped_column(String(36), ForeignKey("vendor_organizations.id", ondelete="CASCADE"), nullable=False)
+
+    # Criteria 1: Hospital Projects >300 Beds (Last 3 Years)
+    hospitals_score: Mapped[float] = mapped_column(Float, default=0.0) # out of 20
+    hospitals_meets: Mapped[bool] = mapped_column(Boolean, default=True)
+    hospitals_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Criteria 2: Company Turnover (Last 3 Years)
+    turnover_score: Mapped[float] = mapped_column(Float, default=0.0) # out of 20
+    turnover_meets: Mapped[bool] = mapped_column(Boolean, default=True)
+    turnover_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Criteria 3: Projects Delivered with Cost > Rs. ... Crore
+    high_value_projects_score: Mapped[float] = mapped_column(Float, default=0.0) # out of 20
+    high_value_projects_meets: Mapped[bool] = mapped_column(Boolean, default=True)
+    high_value_projects_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Criteria 4: Infrastructure / Service Base at Jaipur / Rajasthan
+    service_base_score: Mapped[float] = mapped_column(Float, default=0.0) # out of 20
+    service_base_meets: Mapped[bool] = mapped_column(Boolean, default=True)
+    service_base_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Criteria 5: Audited Balance Sheet FY 2024-25
+    balance_sheet_score: Mapped[float] = mapped_column(Float, default=0.0) # out of 20
+    balance_sheet_verified: Mapped[bool] = mapped_column(Boolean, default=True)
+    balance_sheet_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Aggregate Scoring & Decision
+    total_score: Mapped[float] = mapped_column(Float, default=0.0) # out of 100
+    evaluation_grade: Mapped[str] = mapped_column(String(32), default="B_GRADE") # A_GRADE, B_GRADE, C_GRADE, D_GRADE
+    recommendation: Mapped[str] = mapped_column(String(64), default="QUALIFIED") # RECOMMENDED_BEST, QUALIFIED, NEEDS_CLARIFICATION, REJECTED
+    evaluator_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    admin_summary_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    vendor_organization: Mapped["VendorOrganization"] = relationship("VendorOrganization", back_populates="evaluations")
+

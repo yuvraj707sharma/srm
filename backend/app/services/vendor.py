@@ -17,7 +17,8 @@ class VendorService:
             selectinload(VendorOrganization.contacts),
             selectinload(VendorOrganization.bank_details),
             selectinload(VendorOrganization.financials),
-            selectinload(VendorOrganization.projects)
+            selectinload(VendorOrganization.projects),
+            selectinload(VendorOrganization.evaluations)
         ).where(VendorOrganization.id == vendor_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -68,7 +69,7 @@ class VendorService:
             # Section 6: Classification
             "supply_category", "primary_business_type", "product_service_type", "geographical_coverage", "supply_categories_list",
             # Section 7: Pre-Qualification & Declarations
-            "years_in_business", "projects_completed_count", "high_value_projects_count", "has_service_base_jaipur",
+            "years_in_business", "projects_completed_count", "high_value_projects_count", "high_value_projects_threshold_cr", "has_service_base_jaipur",
             "is_blacklisted", "pending_litigation", "not_debarred_declaration"
         }
         

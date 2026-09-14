@@ -76,20 +76,22 @@ export default function CompleteWhiteVendorProfilePage() {
   const [supplyCategoriesList, setSupplyCategoriesList] = useState<string[]>(["Medical Equipment"]);
 
   // Section 7: Pre-Qualification & Declarations
-  const [turnoverFy1, setTurnoverFy1] = useState<number | "">("");
-  const [turnoverFy2, setTurnoverFy2] = useState<number | "">("");
-  const [turnoverFy3, setTurnoverFy3] = useState<number | "">("");
+  const [turnoverFy1, setTurnoverFy1] = useState<number | "">(""); // FY 2025-26
+  const [turnoverFy2, setTurnoverFy2] = useState<number | "">(""); // FY 2024-25
+  const [turnoverFy3, setTurnoverFy3] = useState<number | "">(""); // FY 2023-24
   const [yearsInBusiness, setYearsInBusiness] = useState<number | "">(14);
   const [projectsCompletedCount, setProjectsCompletedCount] = useState<number | "">(28);
   const [highValueProjectsCount, setHighValueProjectsCount] = useState<number | "">("");
+  const [highValueProjectsThresholdCr, setHighValueProjectsThresholdCr] = useState<number | "">(1.0);
   const [hasServiceBaseJaipur, setHasServiceBaseJaipur] = useState(false);
+  const [infrastructureBaseDetails, setInfrastructureBaseDetails] = useState("");
   const [isBlacklisted, setIsBlacklisted] = useState(false);
   const [pendingLitigation, setPendingLitigation] = useState(false);
   const [notDebarredDeclaration, setNotDebarredDeclaration] = useState(true);
 
-  // Dynamic Projects Table
+  // Dynamic Projects Table (Institutions > 300 Beds)
   const [projects, setProjects] = useState<any[]>([
-    { hospital_name: "", bed_count: "", project_cost: "", financial_year: "", scope_of_work: "", is_300_plus_beds: false }
+    { hospital_name: "", bed_count: 350, project_cost: "", project_duration: "", financial_year: "FY 2024-25", scope_of_work: "", is_300_plus_beds: true }
   ]);
 
   // Section 8: Documents
@@ -166,6 +168,9 @@ export default function CompleteWhiteVendorProfilePage() {
         setYearsInBusiness(data.years_in_business ?? 14);
         setProjectsCompletedCount(data.projects_completed_count ?? 28);
         setHighValueProjectsCount(data.high_value_projects_count ?? "");
+        if (data.high_value_projects_threshold_cr !== undefined && data.high_value_projects_threshold_cr !== null) {
+          setHighValueProjectsThresholdCr(data.high_value_projects_threshold_cr);
+        }
         setHasServiceBaseJaipur(data.has_service_base_jaipur || false);
         setIsBlacklisted(data.is_blacklisted || false);
         setPendingLitigation(data.pending_litigation || false);
@@ -175,6 +180,7 @@ export default function CompleteWhiteVendorProfilePage() {
           setTurnoverFy1(data.financials.turnover_fy1 ?? "");
           setTurnoverFy2(data.financials.turnover_fy2 ?? "");
           setTurnoverFy3(data.financials.turnover_fy3 ?? "");
+          setInfrastructureBaseDetails(data.financials.infrastructure_base_details || "");
         }
 
         if (data.projects && data.projects.length > 0) {
@@ -196,25 +202,31 @@ export default function CompleteWhiteVendorProfilePage() {
   }, []);
 
   const getSectionStatus = (sectionId: number) => {
+    const uploadedTypes = uploadedDocs.map(d => d.document_type);
     switch (sectionId) {
-      case 1: // Identification
-        return Boolean(legalName && panNumber && gstin);
+      case 1: // Identification & Tax Docs
+        return Boolean(legalName && panNumber && gstin && uploadedTypes.includes("PAN") && uploadedTypes.includes("GST"));
       case 2: // Address & Contact
         return Boolean(addressLine1 && city && stateProvince && postalCode && primaryContactPerson && primaryPhone && primaryEmail);
       case 3: // Head of Org
         return Boolean(headName && headEmail && headPhone);
-      case 4: // Bank Details
-        return Boolean(bankName && accountNumber && ifscCode);
+      case 4: // Bank Details & Cheque
+        return Boolean(bankName && accountNumber && ifscCode && uploadedTypes.includes("CANCELLED_CHEQUE"));
       case 5: // Commercial Terms
         return Boolean(paymentTerms && currency);
       case 6: // Classification
         return Boolean(supplyCategory && productServiceType && primaryBusinessType);
-      case 7: // Pre-Qualification
-        return Boolean(yearsInBusiness !== "" && projectsCompletedCount !== "" && notDebarredDeclaration);
-      case 8: // Documents
-        const uploadedTypes = uploadedDocs.map(d => d.document_type);
-        const reqDocs = ["PAN", "GST", "CANCELLED_CHEQUE", "BALANCE_SHEET", "NON_DEBARMENT_DECLARATION"];
-        return reqDocs.every(t => uploadedTypes.includes(t));
+      case 7: // Pre-Qualification, Turnover & Balance Sheet
+        return Boolean(
+          turnoverFy2 !== "" &&
+          yearsInBusiness !== "" &&
+          projectsCompletedCount !== "" &&
+          notDebarredDeclaration &&
+          uploadedTypes.includes("BALANCE_SHEET") &&
+          uploadedTypes.includes("NON_DEBARMENT_DECLARATION")
+        );
+      case 8: // Documents Overview & Supplementary
+        return true;
       default:
         return false;
     }
@@ -228,10 +240,13 @@ export default function CompleteWhiteVendorProfilePage() {
 
   const validatePreSubmission = () => {
     const missing: { section: number; item: string }[] = [];
+    const uploadedTypes = uploadedDocs.map(d => d.document_type);
 
     if (!legalName.trim()) missing.push({ section: 1, item: "Legal Name of Company" });
     if (!panNumber.trim()) missing.push({ section: 1, item: "PAN Number" });
+    if (!uploadedTypes.includes("PAN")) missing.push({ section: 1, item: "PAN Card Document Upload (Section 1)" });
     if (!gstin.trim()) missing.push({ section: 1, item: "GST Number" });
+    if (!uploadedTypes.includes("GST")) missing.push({ section: 1, item: "GST Certificate Document Upload (Section 1)" });
 
     if (!addressLine1.trim()) missing.push({ section: 2, item: "Address Line 1" });
     if (!city.trim()) missing.push({ section: 2, item: "City" });
@@ -248,23 +263,12 @@ export default function CompleteWhiteVendorProfilePage() {
     if (!bankName.trim()) missing.push({ section: 4, item: "Bank Name" });
     if (!accountNumber.trim()) missing.push({ section: 4, item: "Account Number" });
     if (!ifscCode.trim()) missing.push({ section: 4, item: "IFSC Code" });
+    if (!uploadedTypes.includes("CANCELLED_CHEQUE")) missing.push({ section: 4, item: "Cancelled Cheque / Bank Letter Upload (Section 4)" });
 
+    if (turnoverFy2 === "") missing.push({ section: 7, item: "FY 2024-25 Turnover" });
+    if (!uploadedTypes.includes("BALANCE_SHEET")) missing.push({ section: 7, item: "Audited Balance Sheet FY 2024-25 Upload (Section 7)" });
     if (!notDebarredDeclaration) missing.push({ section: 7, item: "Non-Debarment Declaration Checkbox" });
-
-    const uploadedTypes = uploadedDocs.map(d => d.document_type);
-    const reqDocMap: Record<string, string> = {
-      PAN: "PAN Card Copy",
-      GST: "GST Registration Certificate",
-      CANCELLED_CHEQUE: "Cancelled Cheque / Bank Letter",
-      BALANCE_SHEET: "Audited Balance Sheet",
-      NON_DEBARMENT_DECLARATION: "Non-Debarment Declaration"
-    };
-
-    Object.entries(reqDocMap).forEach(([code, name]) => {
-      if (!uploadedTypes.includes(code)) {
-        missing.push({ section: 8, item: `Document Upload: ${name}` });
-      }
-    });
+    if (!uploadedTypes.includes("NON_DEBARMENT_DECLARATION")) missing.push({ section: 7, item: "Signed Non-Debarment Declaration Upload (Section 7)" });
 
     return missing;
   };
@@ -355,6 +359,7 @@ export default function CompleteWhiteVendorProfilePage() {
           years_in_business: yearsInBusiness === "" ? null : yearsInBusiness,
           projects_completed_count: projectsCompletedCount === "" ? null : projectsCompletedCount,
           high_value_projects_count: highValueProjectsCount === "" ? null : highValueProjectsCount,
+          high_value_projects_threshold_cr: highValueProjectsThresholdCr === "" ? null : Number(highValueProjectsThresholdCr),
           has_service_base_jaipur: hasServiceBaseJaipur,
           is_blacklisted: isBlacklisted,
           pending_litigation: pendingLitigation,
@@ -364,9 +369,20 @@ export default function CompleteWhiteVendorProfilePage() {
             turnover_fy1: turnoverFy1 === "" ? null : turnoverFy1,
             turnover_fy2: turnoverFy2 === "" ? null : turnoverFy2,
             turnover_fy3: turnoverFy3 === "" ? null : turnoverFy3,
+            infrastructure_base_details: infrastructureBaseDetails,
           },
 
-          projects: projects.filter(p => p.hospital_name && p.hospital_name.trim().length > 0)
+          projects: projects
+            .filter(p => p.hospital_name && p.hospital_name.trim().length > 0)
+            .map(p => ({
+              hospital_name: p.hospital_name.trim(),
+              bed_count: p.bed_count === "" ? null : Number(p.bed_count),
+              is_300_plus_beds: Number(p.bed_count) >= 300,
+              project_cost: p.project_cost === "" ? null : Number(p.project_cost),
+              project_duration: p.project_duration || null,
+              financial_year: p.financial_year || "FY 2024-25",
+              scope_of_work: p.scope_of_work || null
+            }))
         }),
       });
 
@@ -447,7 +463,10 @@ export default function CompleteWhiteVendorProfilePage() {
 
   const addProjectRow = () => {
     if (isLocked) return;
-    setProjects([...projects, { hospital_name: "", bed_count: "", project_cost: "", financial_year: "", scope_of_work: "", is_300_plus_beds: false }]);
+    setProjects([
+      ...projects,
+      { hospital_name: "", bed_count: 350, project_cost: "", project_duration: "12 Months", financial_year: "FY 2024-25", scope_of_work: "", is_300_plus_beds: true }
+    ]);
   };
 
   const updateProjectField = (index: number, field: string, value: any) => {
@@ -464,6 +483,76 @@ export default function CompleteWhiteVendorProfilePage() {
     } else {
       setSupplyCategoriesList([...supplyCategoriesList, cat]);
     }
+  };
+
+  const InlineDocUploader = ({
+    docType,
+    label,
+    required = false,
+    description,
+  }: {
+    docType: string;
+    label: string;
+    required?: boolean;
+    description?: string;
+  }) => {
+    const uploaded = uploadedDocs.find(d => d.document_type === docType);
+    const fileInputId = `inline-doc-${docType}`;
+
+    return (
+      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center space-x-2">
+            <span className="font-semibold text-gray-900 text-xs">{label}</span>
+            {required && (
+              <span className="bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                Required *
+              </span>
+            )}
+          </div>
+          {description && <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{description}</p>}
+          <div className="mt-1.5 flex items-center space-x-2 text-xs">
+            {uploaded ? (
+              <span className="inline-flex items-center space-x-1.5 text-emerald-700 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md text-[11px]">
+                <span>✓ Uploaded:</span>
+                <span className="font-mono truncate max-w-[200px] sm:max-w-xs">{uploaded.latest_version?.original_filename || "File attached"}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1 text-amber-700 text-[11px] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-medium">
+                <span>⚠️ Pending Upload</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="shrink-0 flex items-center">
+          <input
+            type="file"
+            id={fileInputId}
+            disabled={isLocked}
+            accept=".pdf,.png,.jpg,.jpeg"
+            className="hidden"
+            onChange={e => {
+              if (e.target.files && e.target.files[0]) {
+                handleDocumentUpload(docType, e.target.files[0]);
+              }
+            }}
+          />
+          <label
+            htmlFor={fileInputId}
+            className={`px-3.5 py-1.5 font-semibold rounded-lg border text-xs inline-flex items-center space-x-1.5 transition-all shadow-xs ${
+              isLocked
+                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                : uploaded
+                ? "bg-white hover:bg-gray-100 text-gray-700 border-gray-300 cursor-pointer"
+                : "bg-blue-600 hover:bg-blue-700 text-white border-blue-600 cursor-pointer"
+            }`}
+          >
+            <span>{uploaded ? "↻ Replace File" : "⬆ Upload Document"}</span>
+          </label>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -658,6 +747,44 @@ export default function CompleteWhiteVendorProfilePage() {
             </div>
           </div>
 
+          {/* Empanelment Email Pre-Qualification Requirements Callout */}
+          <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 border border-blue-200/90 rounded-xl p-4 sm:p-5 shadow-xs">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">📧</span>
+              <div className="text-xs space-y-1.5">
+                <div className="font-bold text-blue-950 text-sm flex items-center gap-2">
+                  <span>Empanelment Notice — 5 Pre-Qualification Evaluation Points</span>
+                  <span className="bg-blue-600 text-white text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full">Email Instructions</span>
+                </div>
+                <p className="text-blue-800 leading-relaxed">
+                  Please ensure your profile accurately answers the 5 criteria sent to your email. The Procurement Committee evaluates and scores these exact items to determine vendor empanelment and select the best vendor:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1 text-blue-950 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-blue-600 font-bold">1.</span>
+                    <span>Hospital Projects &gt;300 Beds (Last 3 Years) → <em>Filled in Section 7</em></span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-blue-600 font-bold">2.</span>
+                    <span>Company 3-Year Turnover (FY 23-24 to 25-26) → <em>Filled in Section 7</em></span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-blue-600 font-bold">3.</span>
+                    <span>High-Value Projects Delivered (&gt; ₹1.0 Cr) → <em>Filled in Section 7</em></span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-blue-600 font-bold">4.</span>
+                    <span>Service Base in Jaipur / Rajasthan → <em>Filled in Section 7</em></span>
+                  </div>
+                  <div className="flex items-center gap-1.5 sm:col-span-2">
+                    <span className="text-blue-600 font-bold">5.</span>
+                    <span>Audited Balance Sheet for FY 2024-25 (with CA seal) → <em>Uploaded directly in Section 7 &amp; 8</em></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Notification Messages */}
           {msg && (
             <div className={`p-4 rounded-xl text-sm whitespace-pre-line flex items-start space-x-2 ${
@@ -677,10 +804,6 @@ export default function CompleteWhiteVendorProfilePage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Vendor Code</label>
-                  <input type="text" disabled value={vendorCode} onChange={e => setVendorCode(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" />
-                </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Vendor Status</label>
                   <input type="text" disabled value={profile?.status || "DRAFT"} className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm font-bold uppercase disabled:bg-gray-100 disabled:text-gray-500" />
@@ -721,11 +844,13 @@ export default function CompleteWhiteVendorProfilePage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">PAN Number <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={panNumber} onChange={e => setPanNumber(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500" placeholder="AABCA1234F" />
+                  <input type="text" disabled={isLocked} required value={panNumber} onChange={e => setPanNumber(e.target.value.toUpperCase())} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500 mb-2" placeholder="AABCA1234F" />
+                  <InlineDocUploader docType="PAN" label="PAN Card Document Copy" required={true} description="Upload self-attested PAN card scan (PDF/Image)" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">GST Number <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={gstin} onChange={e => setGstin(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500" placeholder="08AABCA1234F1Z8" />
+                  <input type="text" disabled={isLocked} required value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500 mb-2" placeholder="08AABCA1234F1Z8" />
+                  <InlineDocUploader docType="GST" label="GST Registration Certificate" required={true} description="Upload official GST REG-06 registration certificate (PDF)" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">GST Registration Type</label>
@@ -738,10 +863,13 @@ export default function CompleteWhiteVendorProfilePage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">MSME Registered</label>
-                  <select disabled={isLocked} value={msmeRegistered ? "Yes" : "No"} onChange={e => setMsmeRegistered(e.target.value === "Yes")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
+                  <select disabled={isLocked} value={msmeRegistered ? "Yes" : "No"} onChange={e => setMsmeRegistered(e.target.value === "Yes")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 mb-2">
                     <option value="No">No</option>
                     <option value="Yes">Yes</option>
                   </select>
+                  {msmeRegistered && (
+                    <InlineDocUploader docType="MSME" label="MSME / Udyam Certificate" required={false} description="Upload valid Udyam Registration Certificate (PDF)" />
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">TDS Applicable</label>
@@ -864,9 +992,9 @@ export default function CompleteWhiteVendorProfilePage() {
                 <p className="text-xs text-gray-500">Bank account details for payment processing (* Mandatory)</p>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-xs flex items-center space-x-2">
-                <span>⚠️</span>
-                <span>Please ensure bank details are accurate. Payments will be processed to this account. Upload a cancelled cheque in Section 8.</span>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-900 text-xs flex items-center space-x-2">
+                <span>ℹ️</span>
+                <span>Please ensure bank details are accurate. Purchase order remittances and vendor payments will be processed directly to this account.</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
@@ -888,7 +1016,7 @@ export default function CompleteWhiteVendorProfilePage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">IFSC Code <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={ifscCode} onChange={e => setIfscCode(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500" placeholder="e.g. SBIN0001234" />
+                  <input type="text" disabled={isLocked} required value={ifscCode} onChange={e => setIfscCode(e.target.value.toUpperCase())} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500" placeholder="e.g. SBIN0001234" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Account Type</label>
@@ -898,6 +1026,15 @@ export default function CompleteWhiteVendorProfilePage() {
                     <option value="CC/OD">CC/OD</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <InlineDocUploader
+                  docType="CANCELLED_CHEQUE"
+                  label="Cancelled Cheque / Bank Letter"
+                  required={true}
+                  description="Upload scanned copy or clear image of cancelled cheque showing account number and IFSC, or official bank verification letter"
+                />
               </div>
             </div>
           )}
@@ -1046,172 +1183,500 @@ export default function CompleteWhiteVendorProfilePage() {
           {activeSection === 7 && (
             <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6 shadow-sm">
               <div className="border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">Section 7: Pre-Qualification & Declarations</h2>
-                <p className="text-xs text-gray-500">Experience, turnover, and legal declarations (* Mandatory)</p>
+                <h2 className="text-base font-bold text-gray-900">Section 7: Pre-Qualification, Turnover & Experience</h2>
+                <p className="text-xs text-gray-500">Provide company financials, healthcare project history, infrastructure base, and compliance declarations (* Mandatory)</p>
               </div>
 
               <div className="space-y-6 text-sm">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">Annual Turnover (INR Crores)</label>
+                {/* REQUIREMENT 2 & 5: TURNOVER (LAST 3 YEARS) & AUDITED BALANCE SHEET FOR FY 2024-25 */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 space-y-4 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center space-x-2">
+                        <span>📊</span>
+                        <span>2. Turnover of the Company in the last 3 years (FY 2025-26, FY 2024-25 and FY 2023-24)</span>
+                        <span className="text-red-600 font-bold">*</span>
+                      </h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Enter annual turnover in INR Crores for each financial year.</p>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <span className="text-xs text-gray-500 block mb-1">FY 2023-24</span>
-                      <input type="number" disabled={isLocked} step="0.01" value={turnoverFy1} onChange={e => setTurnoverFy1(e.target.value ? Number(e.target.value) : "")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="0.00" />
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      <span className="text-xs font-bold text-gray-700 block mb-1">FY 2025-26 (Projected / Actual)</span>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-xs text-gray-500 font-bold">₹</span>
+                        <input
+                          type="number"
+                          disabled={isLocked}
+                          step="0.01"
+                          value={turnoverFy1}
+                          onChange={e => setTurnoverFy1(e.target.value ? Number(e.target.value) : "")}
+                          className="w-full bg-white border border-gray-300 rounded-lg pl-7 pr-12 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 font-medium"
+                          placeholder="0.00"
+                        />
+                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-gray-400 font-semibold">Cr</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-xs text-gray-500 block mb-1">FY 2024-25</span>
-                      <input type="number" disabled={isLocked} step="0.01" value={turnoverFy2} onChange={e => setTurnoverFy2(e.target.value ? Number(e.target.value) : "")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="0.00" />
+
+                    <div className="bg-blue-50/60 p-3 rounded-lg border border-blue-200">
+                      <span className="text-xs font-bold text-blue-900 block mb-1">FY 2024-25 (Audited) <span className="text-red-600 font-bold">*</span></span>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-xs text-gray-500 font-bold">₹</span>
+                        <input
+                          type="number"
+                          disabled={isLocked}
+                          step="0.01"
+                          required
+                          value={turnoverFy2}
+                          onChange={e => setTurnoverFy2(e.target.value ? Number(e.target.value) : "")}
+                          className="w-full bg-white border border-blue-300 rounded-lg pl-7 pr-12 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 font-bold"
+                          placeholder="0.00"
+                        />
+                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-gray-400 font-semibold">Cr</span>
+                      </div>
                     </div>
+
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      <span className="text-xs font-bold text-gray-700 block mb-1">FY 2023-24 (Audited)</span>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-xs text-gray-500 font-bold">₹</span>
+                        <input
+                          type="number"
+                          disabled={isLocked}
+                          step="0.01"
+                          value={turnoverFy3}
+                          onChange={e => setTurnoverFy3(e.target.value ? Number(e.target.value) : "")}
+                          className="w-full bg-white border border-gray-300 rounded-lg pl-7 pr-12 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 font-medium"
+                          placeholder="0.00"
+                        />
+                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-gray-400 font-semibold">Cr</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* REQUIREMENT 5: AUDITED BALANCE SHEET FOR FY 2024-25 (INLINE UPLOAD) */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <InlineDocUploader
+                      docType="BALANCE_SHEET"
+                      label="5. Audited Balance Sheet for FY 2024-25"
+                      required={true}
+                      description="Upload complete Audited Balance Sheet & Profit and Loss (P&L) statement for FY 2024-25 certified by a Chartered Accountant with UDIN (PDF)"
+                    />
+                  </div>
+                </div>
+
+                {/* REQUIREMENT 3: NUMBER OF PROJECTS DELIVERED WITH PROJECT COST > RS. ... CRORE */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 space-y-3 shadow-xs">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-base">💼</span>
+                    <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                      3. Number of Projects delivered with Project Cost of more than Rs. ...... Crore
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-gray-500">Specify your benchmark project cost threshold in Rs. Crore and indicate the total number of qualifying projects delivered.</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                     <div>
-                      <span className="text-xs text-gray-500 block mb-1">FY 2025-26</span>
-                      <input type="number" disabled={isLocked} step="0.01" value={turnoverFy3} onChange={e => setTurnoverFy3(e.target.value ? Number(e.target.value) : "")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="0.00" />
+                      <span className="text-xs font-semibold text-gray-700 block mb-1">Project Cost Threshold (in Rs. Crore)</span>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-xs text-gray-500 font-bold">₹</span>
+                        <input
+                          type="number"
+                          disabled={isLocked}
+                          step="0.1"
+                          value={highValueProjectsThresholdCr}
+                          onChange={e => setHighValueProjectsThresholdCr(e.target.value ? Number(e.target.value) : "")}
+                          className="w-full bg-white border border-gray-300 rounded-lg pl-7 pr-12 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 font-medium"
+                          placeholder="1.0"
+                        />
+                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-gray-400 font-semibold">Cr</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-xs font-semibold text-gray-700 block mb-1">
+                        Total Qualifying Projects Delivered (&gt; ₹{highValueProjectsThresholdCr || "1.0"} Cr)
+                      </span>
+                      <input
+                        type="number"
+                        disabled={isLocked}
+                        value={highValueProjectsCount}
+                        onChange={e => setHighValueProjectsCount(e.target.value ? Number(e.target.value) : "")}
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 font-bold"
+                        placeholder="e.g. 5"
+                      />
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Years in Business</label>
-                    <input type="number" disabled={isLocked} value={yearsInBusiness} onChange={e => setYearsInBusiness(e.target.value ? Number(e.target.value) : "")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="14" />
+                {/* REQUIREMENT 4: INFRASTRUCTURE / SERVICE BASE AT JAIPUR AND/OR RAJASTHAN */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 space-y-3 shadow-xs">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-base">🏢</span>
+                    <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                      4. Infrastructure / Service base at Jaipur and / or Rajasthan
+                    </h3>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Projects Completed</label>
-                    <input type="number" disabled={isLocked} value={projectsCompletedCount} onChange={e => setProjectsCompletedCount(e.target.value ? Number(e.target.value) : "")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="28" />
+
+                  <div className="flex items-center space-x-6 pt-1">
+                    <label className="inline-flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="hasServiceBaseJaipur"
+                        disabled={isLocked}
+                        checked={hasServiceBaseJaipur === true}
+                        onChange={() => setHasServiceBaseJaipur(true)}
+                        className="text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      <span className="text-xs font-semibold text-gray-800">Yes, Available in Jaipur / Rajasthan</span>
+                    </label>
+                    <label className="inline-flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="hasServiceBaseJaipur"
+                        disabled={isLocked}
+                        checked={hasServiceBaseJaipur === false}
+                        onChange={() => setHasServiceBaseJaipur(false)}
+                        className="text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      <span className="text-xs font-semibold text-gray-800">No Local Service Base in Rajasthan</span>
+                    </label>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">High-Value Projects &gt; ₹1CR</label>
-                    <input type="number" disabled={isLocked} value={highValueProjectsCount} onChange={e => setHighValueProjectsCount(e.target.value ? Number(e.target.value) : "")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="e.g. 3" />
-                  </div>
+
+                  {hasServiceBaseJaipur && (
+                    <div className="mt-2 pt-3 border-t border-gray-100 space-y-1.5">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Infrastructure & Service Base Address / Facility Details in Jaipur / Rajasthan <span className="text-red-600 font-bold">*</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        disabled={isLocked}
+                        value={infrastructureBaseDetails}
+                        onChange={e => setInfrastructureBaseDetails(e.target.value)}
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-xs focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500"
+                        placeholder="Specify office address in Jaipur / Rajasthan, service center / warehouse facility, resident bio-medical / service engineers count, and standard breakdown response turnaround time..."
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* Projects Table */}
-                <div className="border-t border-gray-100 pt-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-xs font-semibold text-gray-600 uppercase">Projects in Last 3 Years (Institutions &gt; 300 Beds)</label>
+                {/* REQUIREMENT 1: PROJECTS IN HOSPITALS WITH >300 BEDS IN LAST 3 YEARS */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 space-y-4 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-2">
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center space-x-2">
+                        <span>🏥</span>
+                        <span>1. Projects delivered in the last 3 years in Hospitals with more than 300 Beds (FY 2025-26, FY 2024-25 and FY 2023-24)</span>
+                      </h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Provide project delivery records in Medical Colleges & Hospitals (&gt; 300 Beds) with Hospital Name, Project Cost, and Project Duration.
+                      </p>
+                    </div>
+
                     {!isLocked && (
-                      <button type="button" onClick={addProjectRow} className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center space-x-1">
-                        <span>+ Add Row</span>
+                      <button
+                        type="button"
+                        onClick={addProjectRow}
+                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1.5 transition-colors self-start sm:self-auto shrink-0"
+                      >
+                        <span>+ Add Hospital Project</span>
                       </button>
                     )}
                   </div>
 
-                  {projects.map((proj, idx) => (
-                    <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <span className="text-xs text-gray-500 block mb-1">Hospital / Institution Name</span>
-                          <input type="text" disabled={isLocked} value={proj.hospital_name || ""} onChange={e => updateProjectField(idx, "hospital_name", e.target.value)} className="w-full bg-white border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 disabled:bg-gray-100 disabled:text-gray-500" placeholder="Hospital Name" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div>
+                      <span className="text-xs font-semibold text-gray-700 block mb-1">
+                        Total Number of Hospital Projects (&gt;300 Beds) Delivered
+                      </span>
+                      <input
+                        type="number"
+                        disabled={isLocked}
+                        value={projectsCompletedCount}
+                        onChange={e => setProjectsCompletedCount(e.target.value ? Number(e.target.value) : "")}
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-bold"
+                        placeholder="e.g. 8"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-700 block mb-1">Years of Relevant Healthcare / Industrial Experience</span>
+                      <input
+                        type="number"
+                        disabled={isLocked}
+                        value={yearsInBusiness}
+                        onChange={e => setYearsInBusiness(e.target.value ? Number(e.target.value) : "")}
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-bold"
+                        placeholder="e.g. 14"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Projects List */}
+                  <div className="space-y-3">
+                    {projects.map((proj, idx) => (
+                      <div key={idx} className="bg-slate-50/50 border border-slate-200 rounded-xl p-4 space-y-3 relative hover:border-blue-200 transition-all shadow-xs">
+                        <div className="flex justify-between items-center border-b border-slate-200/80 pb-2">
+                          <span className="text-xs font-bold text-gray-700 flex items-center space-x-2">
+                            <span className="bg-blue-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">Project #{idx + 1}</span>
+                            <span>Hospital / Medical College Details</span>
+                          </span>
+
+                          {!isLocked && projects.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = projects.filter((_, i) => i !== idx);
+                                setProjects(next);
+                              }}
+                              className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                            >
+                              ✕ Remove Row
+                            </button>
+                          )}
                         </div>
-                        <div>
-                          <span className="text-xs text-gray-500 block mb-1">Bed Count</span>
-                          <input type="number" disabled={isLocked} value={proj.bed_count || ""} onChange={e => updateProjectField(idx, "bed_count", e.target.value)} className="w-full bg-white border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 disabled:bg-gray-100 disabled:text-gray-500" placeholder="e.g. 350" />
-                        </div>
-                        <div>
-                          <span className="text-xs text-gray-500 block mb-1">Project Cost (₹ Cr)</span>
-                          <input type="number" disabled={isLocked} step="0.01" value={proj.project_cost || ""} onChange={e => updateProjectField(idx, "project_cost", e.target.value)} className="w-full bg-white border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 disabled:bg-gray-100 disabled:text-gray-500" placeholder="e.g. 2.5" />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                          <div className="md:col-span-2">
+                            <span className="font-semibold text-gray-600 block mb-1">Name of Medical College / Hospital <span className="text-red-600 font-bold">*</span></span>
+                            <input
+                              type="text"
+                              disabled={isLocked}
+                              value={proj.hospital_name || ""}
+                              onChange={e => updateProjectField(idx, "hospital_name", e.target.value)}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+                              placeholder="e.g. SMS Medical College & Hospital, Jaipur / AIIMS"
+                            />
+                          </div>
+
+                          <div>
+                            <span className="font-semibold text-gray-600 block mb-1">Bed Count (&gt; 300 Beds) <span className="text-red-600 font-bold">*</span></span>
+                            <input
+                              type="number"
+                              disabled={isLocked}
+                              value={proj.bed_count || ""}
+                              onChange={e => updateProjectField(idx, "bed_count", e.target.value)}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-medium"
+                              placeholder="e.g. 500"
+                            />
+                          </div>
+
+                          <div>
+                            <span className="font-semibold text-gray-600 block mb-1">Financial Year Delivered <span className="text-red-600 font-bold">*</span></span>
+                            <select
+                              disabled={isLocked}
+                              value={proj.financial_year || "FY 2024-25"}
+                              onChange={e => updateProjectField(idx, "financial_year", e.target.value)}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-medium"
+                            >
+                              <option value="FY 2025-26">FY 2025-26</option>
+                              <option value="FY 2024-25">FY 2024-25</option>
+                              <option value="FY 2023-24">FY 2023-24</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <span className="font-semibold text-gray-600 block mb-1">Project Cost (₹ in Crores) <span className="text-red-600 font-bold">*</span></span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              disabled={isLocked}
+                              value={proj.project_cost || ""}
+                              onChange={e => updateProjectField(idx, "project_cost", e.target.value)}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-bold"
+                              placeholder="e.g. 3.50"
+                            />
+                          </div>
+
+                          <div>
+                            <span className="font-semibold text-gray-600 block mb-1">Project Duration <span className="text-red-600 font-bold">*</span></span>
+                            <input
+                              type="text"
+                              disabled={isLocked}
+                              value={proj.project_duration || ""}
+                              onChange={e => updateProjectField(idx, "project_duration", e.target.value)}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+                              placeholder="e.g. 12 Months / Apr 2024 - Mar 2025"
+                            />
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <span className="font-semibold text-gray-600 block mb-1">Scope of Work / Supplies Delivered</span>
+                            <input
+                              type="text"
+                              disabled={isLocked}
+                              value={proj.scope_of_work || ""}
+                              onChange={e => updateProjectField(idx, "scope_of_work", e.target.value)}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+                              placeholder="e.g. Supply, installation, testing and commissioning of medical gas pipeline system & ICU ventilators"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input type="checkbox" disabled={isLocked} checked={hasServiceBaseJaipur} onChange={e => setHasServiceBaseJaipur(e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50" />
-                    <span className="text-xs font-semibold text-blue-900">We have a service base in Jaipur / Rajasthan</span>
-                  </label>
-                </div>
-
-                <div className="space-y-2 border-t border-gray-100 pt-3">
-                  <span className="text-xs font-semibold text-gray-600 uppercase block">Legal Declarations</span>
+                {/* LEGAL & DEBARMENT DECLARATIONS WITH INLINE UPLOAD */}
+                <div className="space-y-3 border-t border-gray-100 pt-4">
+                  <span className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Legal & Debarment Declarations</span>
                   
                   <label className="flex items-start space-x-2 cursor-pointer">
                     <input type="checkbox" disabled={isLocked} checked={isBlacklisted} onChange={e => setIsBlacklisted(e.target.checked)} className="mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500 disabled:opacity-50" />
-                    <span className="text-xs text-gray-700">Our company has been blacklisted by any government institution or PSU</span>
+                    <span className="text-xs text-gray-700">Our company has been blacklisted by any government institution, state authority, or PSU</span>
                   </label>
 
                   <label className="flex items-start space-x-2 cursor-pointer">
                     <input type="checkbox" disabled={isLocked} checked={pendingLitigation} onChange={e => setPendingLitigation(e.target.checked)} className="mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500 disabled:opacity-50" />
-                    <span className="text-xs text-gray-700">Our company has pending litigation with any government body</span>
+                    <span className="text-xs text-gray-700">Our company has active or pending litigation with any government or healthcare body</span>
                   </label>
 
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                    <label className="flex items-start space-x-2 cursor-pointer">
-                      <input type="checkbox" disabled={isLocked} checked={notDebarredDeclaration} onChange={e => setNotDebarredDeclaration(e.target.checked)} className="mt-0.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50" />
-                      <span className="text-xs text-emerald-800 font-semibold">
-                        I/We hereby declare that our firm has not been debarred, blacklisted, or disqualified from participating in any procurement process by JECRC Foundation or any government/institutional body. <span className="text-red-600 font-bold">*</span>
+                  <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 space-y-3">
+                    <label className="flex items-start space-x-2.5 cursor-pointer">
+                      <input type="checkbox" disabled={isLocked} checked={notDebarredDeclaration} onChange={e => setNotDebarredDeclaration(e.target.checked)} className="mt-1 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50" />
+                      <span className="text-xs text-emerald-900 font-semibold leading-relaxed">
+                        I/We hereby solemnly declare that our firm / company has NOT been debarred, blacklisted, or disqualified from participating in any procurement process by JECRC Foundation or any government/institutional body. <span className="text-red-600 font-bold">*</span>
                       </span>
                     </label>
+
+                    <div className="pt-2 border-t border-emerald-200">
+                      <InlineDocUploader
+                        docType="NON_DEBARMENT_DECLARATION"
+                        label="Signed Non-Debarment Declaration / Affidavit"
+                        required={true}
+                        description="Upload signed and stamped Non-Debarment Affidavit or Declaration on company letterhead (PDF)"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* SECTION 8: DOCUMENTS */}
+          {/* SECTION 8: DOCUMENTS OVERVIEW & SUPPLEMENTARY FILES */}
           {activeSection === 8 && (
             <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6 shadow-sm">
               <div className="border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">Section 8: Supporting Compliance Documents</h2>
-                <p className="text-xs text-gray-500">Upload required compliance certificates and supporting documents (* Mandatory)</p>
+                <h2 className="text-base font-bold text-gray-900">Section 8: Compliance Verification & Supplementary Documents</h2>
+                <p className="text-xs text-gray-500">
+                  Mandatory compliance documents are uploaded directly within their respective sections. Use this section to review compliance status and attach additional catalog or quality documents.
+                </p>
               </div>
 
-              <div className="space-y-3">
-                {[
-                  { key: "PAN", label: "PAN Card Copy", required: true },
-                  { key: "GST", label: "GST Registration Certificate", required: true },
-                  { key: "CANCELLED_CHEQUE", label: "Cancelled Cheque / Bank Letter", required: true },
-                  { key: "BALANCE_SHEET", label: "Audited Balance Sheet FY 2024-25", required: true },
-                  { key: "NON_DEBARMENT_DECLARATION", label: "Non-Debarment Declaration", required: true },
-                  { key: "MSME", label: "MSME/Udyam Certificate", required: false },
-                  { key: "COMPANY_PROFILE", label: "Company Profile / Brochure", required: false },
-                  { key: "PRODUCT_CATALOG", label: "Product Catalog PDF (AI Product Extraction)", required: false },
-                  { key: "DRUG_LICENSE", label: "Drug License (if applicable)", required: false },
-                  { key: "OTHER", label: "Other Supporting Document", required: false }
-                ].map((doc) => {
-                  const uploaded = uploadedDocs.find(d => d.document_type === doc.key);
-                  return (
-                    <div key={doc.key} className="bg-gray-50 border border-gray-200 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-semibold text-gray-900 text-xs">{doc.label}</span>
-                          {doc.required && (
-                            <span className="bg-red-100 text-red-800 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                              Required *
-                            </span>
-                          )}
+              {/* CARD 1: OVERVIEW OF INLINE COMPLIANCE DOCUMENTS */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-base">📋</span>
+                    <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                      Mandatory Compliance Documents Summary
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-gray-500">Uploaded in Sections 1, 4 & 7</span>
+                </div>
+
+                <div className="divide-y divide-gray-200 text-xs">
+                  {[
+                    { key: "PAN", label: "PAN Card Document Copy", sectionId: 1, sectionName: "Section 1 (Identification)" },
+                    { key: "GST", label: "GST Registration Certificate", sectionId: 1, sectionName: "Section 1 (Identification)" },
+                    { key: "CANCELLED_CHEQUE", label: "Cancelled Cheque / Bank Letter", sectionId: 4, sectionName: "Section 4 (Bank Details)" },
+                    { key: "BALANCE_SHEET", label: "Audited Balance Sheet FY 2024-25", sectionId: 7, sectionName: "Section 7 (Pre-Qualification)" },
+                    { key: "NON_DEBARMENT_DECLARATION", label: "Signed Non-Debarment Declaration", sectionId: 7, sectionName: "Section 7 (Pre-Qualification)" },
+                    ...(msmeRegistered ? [{ key: "MSME", label: "MSME / Udyam Certificate", sectionId: 1, sectionName: "Section 1 (Identification)" }] : [])
+                  ].map(doc => {
+                    const uploaded = uploadedDocs.find(d => d.document_type === doc.key);
+                    return (
+                      <div key={doc.key} className="py-2.5 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-semibold text-gray-900">{doc.label}</span>
+                            <span className="text-[10px] text-gray-500 bg-gray-200/70 px-1.5 py-0.2 rounded font-medium">{doc.sectionName}</span>
+                          </div>
+                          <span className="text-[11px] block mt-0.5">
+                            {uploaded ? (
+                              <span className="text-emerald-700 font-medium">✓ Uploaded ({uploaded.latest_version?.original_filename || "Attached"})</span>
+                            ) : (
+                              <span className="text-amber-700 font-medium">⚠️ Pending upload in {doc.sectionName}</span>
+                            )}
+                          </span>
                         </div>
-                        <span className="text-[11px] text-gray-500 block mt-0.5">
-                          {uploaded ? `✓ Uploaded (${uploaded.latest_version?.original_filename || "File attached"})` : "No file uploaded"}
-                        </span>
+
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSection(doc.sectionId)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-bold underline bg-white border border-gray-200 hover:border-blue-300 px-3 py-1 rounded-md shadow-2xs transition-all"
+                          >
+                            {uploaded ? "View / Replace in " + doc.sectionName.split(" ")[0] : "Go to " + doc.sectionName.split(" ")[0]}
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <input
-                          type="file"
-                          disabled={isLocked}
-                          accept=".pdf,.png,.jpg,.jpeg"
-                          id={`file-${doc.key}`}
-                          className="hidden"
-                          onChange={e => {
-                            if (e.target.files && e.target.files[0]) {
-                              handleDocumentUpload(doc.key, e.target.files[0]);
-                            }
-                          }}
-                        />
-                        <label
-                          htmlFor={`file-${doc.key}`}
-                          className={`px-3.5 py-1.5 font-semibold rounded-lg border text-xs inline-flex items-center space-x-1.5 transition-all shadow-sm ${
-                            isLocked
-                              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                              : "bg-white hover:bg-gray-100 text-gray-700 border-gray-300 cursor-pointer"
-                          }`}
-                        >
-                          <span>⬆ {uploaded ? "Replace File" : "Upload File"}</span>
-                        </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* CARD 2: SUPPLEMENTARY / ADDITIONAL DOCUMENTS */}
+              <div className="space-y-4 pt-2">
+                <div className="border-b border-gray-100 pb-2">
+                  <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center space-x-2">
+                    <span>📁</span>
+                    <span>Supplementary & Technical Documents (Optional / As Applicable)</span>
+                  </h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Upload your official company profile, product catalogs for AI-assisted pricing extraction, and regulatory licenses.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    { key: "COMPANY_PROFILE", label: "Company Profile / Brochure", desc: "Corporate presentation, client list, and executive overview (PDF)" },
+                    { key: "PRODUCT_CATALOG", label: "Product Catalog PDF (AI Extraction)", desc: "Upload detailed technical item catalog for automatic Gemini AI extraction" },
+                    { key: "DRUG_LICENSE", label: "Drug License / FDA Permissions", desc: "Form 20B/21B or state FDA manufacture/wholesale licenses (if applicable)" },
+                    { key: "OTHER", label: "Other Accreditations / Certifications", desc: "ISO 9001/13485, CE, BIS, or specialized hospital OEM certifications" }
+                  ].map(doc => {
+                    const uploaded = uploadedDocs.find(d => d.document_type === doc.key);
+                    return (
+                      <div key={doc.key} className="bg-gray-50 border border-gray-200 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <span className="font-semibold text-gray-900 text-xs">{doc.label}</span>
+                          <p className="text-[11px] text-gray-500 mt-0.5">{doc.desc}</p>
+                          <span className="text-[11px] text-gray-600 block mt-1">
+                            {uploaded ? (
+                              <span className="text-emerald-700 font-medium">✓ Uploaded: {uploaded.latest_version?.original_filename || "File attached"}</span>
+                            ) : (
+                              <span className="text-gray-400">Optional</span>
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <input
+                            type="file"
+                            disabled={isLocked}
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            id={`file-${doc.key}`}
+                            className="hidden"
+                            onChange={e => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleDocumentUpload(doc.key, e.target.files[0]);
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`file-${doc.key}`}
+                            className={`px-3.5 py-1.5 font-semibold rounded-lg border text-xs inline-flex items-center space-x-1.5 transition-all shadow-xs ${
+                              isLocked
+                                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                : "bg-white hover:bg-gray-100 text-gray-700 border-gray-300 cursor-pointer"
+                            }`}
+                          >
+                            <span>⬆ {uploaded ? "Replace File" : "Upload File"}</span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}

@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
       {
         source: '/srm-api/:path*',
         destination: 'http://127.0.0.1:8007/:path*',
+        basePath: false,
+      },
+      {
+        source: '/srm-api/:path*',
+        destination: 'http://127.0.0.1:8007/:path*',
       },
     ];
   },

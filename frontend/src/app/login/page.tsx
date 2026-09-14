@@ -106,7 +106,12 @@ export default function UnifiedAuthPage() {
         if (data.status === "otp_sent") {
           setOtpSent(true);
           setOtpEmail(data.email || regEmail);
-          setSuccess("Account created! A 6-digit OTP code has been sent to your email.");
+          if (data.dev_otp) {
+            setOtpCode(data.dev_otp);
+            setSuccess(`Account created! Development OTP: ${data.dev_otp} (auto-filled below).`);
+          } else {
+            setSuccess("Account created! A 6-digit OTP code has been sent to your email.");
+          }
         } else if (data.access_token) {
           await login(data.access_token);
           router.push("/vendor/profile");
@@ -352,12 +357,38 @@ export default function UnifiedAuthPage() {
                       <span>Sign In</span>
                     )}
                   </button>
+
+                  <div className="pt-3 border-t border-gray-100 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-gray-500 text-center">Quick Demo Accounts:</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setLoginEmail("admin@test.com"); setLoginPassword("password123"); setError(null); }}
+                        className="flex-1 py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-medium rounded-lg border border-slate-200 transition-colors text-center"
+                      >
+                        👑 Admin
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setLoginEmail("vendor_a@test.com"); setLoginPassword("password123"); setError(null); }}
+                        className="flex-1 py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-medium rounded-lg border border-blue-200 transition-colors text-center"
+                      >
+                        🏢 Vendor
+                      </button>
+                    </div>
+                  </div>
                 </form>
               )}
 
               {/* VENDOR REGISTER FORM */}
               {mode === "register" && (
                 <form className="space-y-4" onSubmit={handleRegister}>
+                  <div className="bg-blue-50/80 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 leading-relaxed">
+                    <div className="font-bold flex items-center gap-1.5 text-blue-950 mb-1">
+                      <span>📩</span> Received an Empanelment Email?
+                    </div>
+                    Sign up with your official work email. After email OTP verification, you will fill out the 5 pre-qualification evaluation criteria (Projects &gt;300 beds, 3-year turnover, high-value projects, Rajasthan service base, and FY 2024-25 balance sheet) for committee scoring.
+                  </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
                       Primary Contact Full Name *

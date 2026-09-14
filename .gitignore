@@ -13,6 +13,7 @@ __pycache__/
 *.pyd
 
 # Storage & Temporary Files
+storage/
 backend/storage/*
 !backend/storage/.gitkeep
 .env

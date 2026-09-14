@@ -17,8 +17,8 @@ export default function AdminVendorsPage() {
   const [vendorQs, setVendorQs] = useState<any[]>([]);
   const [vendorCats, setVendorCats] = useState<any[]>([]);
   
-  // New States for Tabbed Interface and PDF Viewer
-  const [activeTab, setActiveTab] = useState<"profile" | "financials" | "projects" | "documents" | "declarations">("profile");
+  // Tabbed Interface and PDF Viewer
+  const [activeTab, setActiveTab] = useState<"profile" | "financials" | "projects" | "declarations" | "documents" | "evaluation">("evaluation");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   
   // Products associated with a catalog ID
@@ -27,8 +27,37 @@ export default function AdminVendorsPage() {
   // Verification action
   const [verifying, setVerifying] = useState(false);
 
-  // Filters
+  // Filters & Sorting
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [sortBy, setSortBy] = useState<"default" | "score" | "turnover" | "projects">("score");
+
+  // 5-Point Evaluation States
+  const [evalHospitalsScore, setEvalHospitalsScore] = useState<number>(20);
+  const [evalHospitalsMeets, setEvalHospitalsMeets] = useState<boolean>(true);
+  const [evalHospitalsRemarks, setEvalHospitalsRemarks] = useState<string>("");
+
+  const [evalTurnoverScore, setEvalTurnoverScore] = useState<number>(20);
+  const [evalTurnoverMeets, setEvalTurnoverMeets] = useState<boolean>(true);
+  const [evalTurnoverRemarks, setEvalTurnoverRemarks] = useState<string>("");
+
+  const [evalHighValueScore, setEvalHighValueScore] = useState<number>(20);
+  const [evalHighValueMeets, setEvalHighValueMeets] = useState<boolean>(true);
+  const [evalHighValueRemarks, setEvalHighValueRemarks] = useState<string>("");
+
+  const [evalServiceBaseScore, setEvalServiceBaseScore] = useState<number>(20);
+  const [evalServiceBaseMeets, setEvalServiceBaseMeets] = useState<boolean>(true);
+  const [evalServiceBaseRemarks, setEvalServiceBaseRemarks] = useState<string>("");
+
+  const [evalBalanceSheetScore, setEvalBalanceSheetScore] = useState<number>(20);
+  const [evalBalanceSheetVerified, setEvalBalanceSheetVerified] = useState<boolean>(true);
+  const [evalBalanceSheetRemarks, setEvalBalanceSheetRemarks] = useState<string>("");
+
+  const [evalGrade, setEvalGrade] = useState<string>("A_GRADE");
+  const [evalRecommendation, setEvalRecommendation] = useState<string>("RECOMMENDED_BEST");
+  const [evalEvaluatorName, setEvalEvaluatorName] = useState<string>("");
+  const [evalSummaryNotes, setEvalSummaryNotes] = useState<string>("");
+  const [savingEval, setSavingEval] = useState<boolean>(false);
+  const [evalMsg, setEvalMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Auth/Role Check
   const [isAuthorized, setIsAuthorized] = useState<boolean>(true);
@@ -98,11 +127,12 @@ export default function AdminVendorsPage() {
   const loadVendorDetails = async (id: string) => {
     try {
       setLoadingDetails(true);
-      const [vRes, dRes, qRes, cRes] = await Promise.all([
+      const [vRes, dRes, qRes, cRes, eRes] = await Promise.all([
         fetchApi(`/api/v1/admin/vendors/${id}`),
         fetchApi(`/api/v1/admin/vendors/${id}/documents`),
         fetchApi(`/api/v1/admin/vendors/${id}/questionnaires`),
-        fetchApi(`/api/v1/admin/vendors/${id}/catalogs`)
+        fetchApi(`/api/v1/admin/vendors/${id}/catalogs`),
+        fetchApi(`/api/v1/admin/vendors/${id}/evaluation`)
       ]);
       
       if (!vRes.ok) throw new Error("Failed to load vendor details");
@@ -110,7 +140,11 @@ export default function AdminVendorsPage() {
       const vData = await vRes.json();
       setSelectedVendor(vData);
       
-      if (dRes.ok) setVendorDocs(await dRes.json());
+      let docsData: any[] = [];
+      if (dRes.ok) {
+        docsData = await dRes.json();
+        setVendorDocs(docsData);
+      }
       if (qRes.ok) setVendorQs(await qRes.json());
       if (cRes.ok) {
           const cData = await cRes.json();
@@ -118,9 +152,78 @@ export default function AdminVendorsPage() {
           // Fetch products for each catalog
           cData.forEach((cat: any) => fetchCatalogProducts(id, cat.id));
       }
+
+      // Check evaluation
+      let existingEval = null;
+      if (eRes.ok) {
+        const eData = await eRes.json();
+        existingEval = eData.evaluation;
+      }
+      if (!existingEval && vData.evaluations && vData.evaluations.length > 0) {
+        existingEval = vData.evaluations[0];
+      }
+
+      if (existingEval) {
+        setEvalHospitalsScore(existingEval.hospitals_score ?? 20);
+        setEvalHospitalsMeets(Boolean(existingEval.hospitals_meets));
+        setEvalHospitalsRemarks(existingEval.hospitals_remarks || "");
+
+        setEvalTurnoverScore(existingEval.turnover_score ?? 20);
+        setEvalTurnoverMeets(Boolean(existingEval.turnover_meets));
+        setEvalTurnoverRemarks(existingEval.turnover_remarks || "");
+
+        setEvalHighValueScore(existingEval.high_value_projects_score ?? 20);
+        setEvalHighValueMeets(Boolean(existingEval.high_value_projects_meets));
+        setEvalHighValueRemarks(existingEval.high_value_projects_remarks || "");
+
+        setEvalServiceBaseScore(existingEval.service_base_score ?? 20);
+        setEvalServiceBaseMeets(Boolean(existingEval.service_base_meets));
+        setEvalServiceBaseRemarks(existingEval.service_base_remarks || "");
+
+        setEvalBalanceSheetScore(existingEval.balance_sheet_score ?? 20);
+        setEvalBalanceSheetVerified(Boolean(existingEval.balance_sheet_verified));
+        setEvalBalanceSheetRemarks(existingEval.balance_sheet_remarks || "");
+
+        setEvalGrade(existingEval.evaluation_grade || "A_GRADE");
+        setEvalRecommendation(existingEval.recommendation || "RECOMMENDED_BEST");
+        setEvalEvaluatorName(existingEval.evaluator_name || user?.full_name || user?.username || "Admin");
+        setEvalSummaryNotes(existingEval.admin_summary_notes || "");
+      } else {
+        // Smart defaults based on vendor submitted responses to the 5 email criteria
+        const hasHospitalProjects = (vData.projects && vData.projects.filter((p: any) => p.is_300_plus_beds).length > 0) || ((vData.projects_completed_count || 0) > 0);
+        setEvalHospitalsMeets(Boolean(hasHospitalProjects));
+        setEvalHospitalsScore(hasHospitalProjects ? 20 : 10);
+        setEvalHospitalsRemarks(hasHospitalProjects ? `${(vData.projects || []).length || vData.projects_completed_count} verified hospital projects (>300 beds).` : "Review project details.");
+
+        const hasTurnover = Boolean(vData.financials && vData.financials[0]?.turnover_fy2);
+        setEvalTurnoverMeets(hasTurnover);
+        setEvalTurnoverScore(hasTurnover ? 20 : 10);
+        setEvalTurnoverRemarks(hasTurnover ? `FY 2024-25 Turnover: ₹${vData.financials[0].turnover_fy2} Cr.` : "Review financials.");
+
+        const hasHighVal = (vData.high_value_projects_count > 0) || ((vData.projects || []).some((p: any) => Number(p.project_cost) >= 1.0));
+        setEvalHighValueMeets(Boolean(hasHighVal));
+        setEvalHighValueScore(hasHighVal ? 20 : 10);
+        setEvalHighValueRemarks(hasHighVal ? `${vData.high_value_projects_count || 'Multiple'} high-value projects confirmed.` : "Review project costs.");
+
+        const hasJaipur = Boolean(vData.has_service_base_jaipur);
+        setEvalServiceBaseMeets(hasJaipur);
+        setEvalServiceBaseScore(hasJaipur ? 20 : 5);
+        setEvalServiceBaseRemarks(hasJaipur ? "Local service presence in Jaipur/Rajasthan confirmed." : "No local service presence indicated.");
+
+        const hasBalanceSheet = docsData.some((d: any) => d.document_type === "BALANCE_SHEET");
+        setEvalBalanceSheetVerified(hasBalanceSheet);
+        setEvalBalanceSheetScore(hasBalanceSheet ? 20 : 5);
+        setEvalBalanceSheetRemarks(hasBalanceSheet ? "Audited Balance Sheet for FY 2024-25 verified." : "Audited balance sheet pending review.");
+
+        setEvalGrade("A_GRADE");
+        setEvalRecommendation("RECOMMENDED_BEST");
+        setEvalEvaluatorName(user?.full_name || user?.username || "Admin Evaluator");
+        setEvalSummaryNotes("");
+      }
+      setEvalMsg(null);
       
-      // Reset active tab to profile when changing vendors
-      setActiveTab("profile");
+      // Default to evaluation tab when reviewing vendor
+      setActiveTab("evaluation");
       setPdfUrl(null);
       
     } catch (e) {
@@ -204,12 +307,89 @@ export default function AdminVendorsPage() {
     }
   };
 
-  const filteredVendors = vendors.filter(v => 
-    filterStatus === "ALL" ? true : v.status === filterStatus
-  );
+  const totalEvalScore = Math.min(100, Math.max(0, evalHospitalsScore + evalTurnoverScore + evalHighValueScore + evalServiceBaseScore + evalBalanceSheetScore));
 
-  const selectVendorForInspection = (id: string) => {
+  const handleSaveEvaluation = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedVendor) return;
+    try {
+      setSavingEval(true);
+      setEvalMsg(null);
+
+      // Auto derive grade based on 100-point total
+      let calculatedGrade = evalGrade;
+      if (totalEvalScore >= 85) calculatedGrade = "A_GRADE";
+      else if (totalEvalScore >= 70) calculatedGrade = "B_GRADE";
+      else if (totalEvalScore >= 50) calculatedGrade = "C_GRADE";
+      else calculatedGrade = "D_GRADE";
+
+      const payload = {
+        hospitals_score: Number(evalHospitalsScore),
+        hospitals_meets: Boolean(evalHospitalsMeets),
+        hospitals_remarks: evalHospitalsRemarks,
+        turnover_score: Number(evalTurnoverScore),
+        turnover_meets: Boolean(evalTurnoverMeets),
+        turnover_remarks: evalTurnoverRemarks,
+        high_value_projects_score: Number(evalHighValueScore),
+        high_value_projects_meets: Boolean(evalHighValueMeets),
+        high_value_projects_remarks: evalHighValueRemarks,
+        service_base_score: Number(evalServiceBaseScore),
+        service_base_meets: Boolean(evalServiceBaseMeets),
+        service_base_remarks: evalServiceBaseRemarks,
+        balance_sheet_score: Number(evalBalanceSheetScore),
+        balance_sheet_verified: Boolean(evalBalanceSheetVerified),
+        balance_sheet_remarks: evalBalanceSheetRemarks,
+        total_score: totalEvalScore,
+        evaluation_grade: calculatedGrade,
+        recommendation: evalRecommendation,
+        evaluator_name: evalEvaluatorName || user?.full_name || "Admin",
+        admin_summary_notes: evalSummaryNotes
+      };
+
+      const res = await fetchApi(`/api/v1/admin/vendors/${selectedVendor.id}/evaluation`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setEvalMsg({ type: "success", text: `Evaluation successfully saved! Total Score: ${totalEvalScore}/100 (${calculatedGrade.replace('_', ' ')}). Vendor ranking has been updated.` });
+        loadVendors();
+      } else {
+        const err = await res.json();
+        setEvalMsg({ type: "error", text: err.detail?.message || "Failed to save evaluation." });
+      }
+    } catch (err) {
+      console.error(err);
+      setEvalMsg({ type: "error", text: "Network error saving evaluation." });
+    } finally {
+      setSavingEval(false);
+    }
+  };
+
+  const filteredVendors = [...vendors].filter(v => 
+    filterStatus === "ALL" ? true : v.status === filterStatus
+  ).sort((a, b) => {
+    if (sortBy === "score") {
+      const scoreA = a.latest_evaluation?.total_score ?? -1;
+      const scoreB = b.latest_evaluation?.total_score ?? -1;
+      return scoreB - scoreA;
+    }
+    if (sortBy === "turnover") {
+      const tA = a.avg_turnover ?? 0;
+      const tB = b.avg_turnover ?? 0;
+      return tB - tA;
+    }
+    if (sortBy === "projects") {
+      const pA = a.projects_completed_count ?? 0;
+      const pB = b.projects_completed_count ?? 0;
+      return pB - pA;
+    }
+    return 0;
+  });
+
+  const selectVendorForInspection = (id: string, initialTab: any = "evaluation") => {
     setSelectedVendorId(id);
+    setActiveTab(initialTab);
   };
   
   const handleViewPdf = async (vendorId: string, documentId: string) => {
@@ -349,6 +529,7 @@ export default function AdminVendorsPage() {
               {/* Tabs Navigation */}
               <div className="px-6 flex gap-6 border-b border-gray-200 bg-white pt-2 overflow-x-auto">
                   {[
+                      { id: "evaluation", label: "⭐ 5-Point Evaluation (Best Vendor)", highlight: true },
                       { id: "profile", label: "Profile & Contacts" },
                       { id: "financials", label: "Financials & Bank" },
                       { id: "projects", label: "Project History" },
@@ -358,9 +539,11 @@ export default function AdminVendorsPage() {
                       <button
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id as any)}
-                          className={`pb-4 pt-2 text-sm font-semibold transition-all border-b-2 ${
+                          className={`pb-4 pt-2 text-sm font-semibold transition-all border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
                               activeTab === tab.id 
                               ? "border-blue-600 text-blue-600" 
+                              : tab.highlight
+                              ? "border-transparent text-amber-700 font-bold hover:text-amber-800"
                               : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300"
                           }`}
                       >
@@ -371,7 +554,637 @@ export default function AdminVendorsPage() {
               
               {/* Tab Content Container */}
               <div className="p-6 bg-gray-50">
-                  
+
+                  {/* TAB 0: 5-Point Empanelment Evaluation */}
+                  {activeTab === "evaluation" && (
+                      <div className="space-y-6">
+
+                          {/* Evaluation Scoreboard Banner */}
+                          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 shadow-xl border border-indigo-900/50">
+                              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                                  <div>
+                                      <div className="inline-flex items-center gap-2 bg-amber-400/20 text-amber-300 text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-amber-400/30 mb-2">
+                                          <span>🏆</span> Vendor Pre-Qualification Evaluation Matrix
+                                      </div>
+                                      <h3 className="text-2xl font-bold tracking-tight">5-Point Empanelment Scoring</h3>
+                                      <p className="text-slate-300 text-xs mt-1 max-w-2xl leading-relaxed">
+                                          Objectively evaluate this vendor against the 5 criteria provided during registration. Score each criterion (0–20 points) to compute their total score out of 100, identify whether they qualify, and rank them as the best vendor.
+                                      </p>
+                                  </div>
+
+                                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/15 flex items-center gap-6 self-stretch sm:self-auto justify-around">
+                                      <div className="text-center">
+                                          <div className="text-xs text-slate-300 uppercase tracking-wider font-semibold">Total Score</div>
+                                          <div className="text-3xl sm:text-4xl font-black text-amber-400 font-mono mt-0.5">
+                                              {totalEvalScore}<span className="text-base sm:text-xl text-slate-400 font-normal">/100</span>
+                                          </div>
+                                      </div>
+
+                                      <div className="h-10 w-px bg-white/20"></div>
+
+                                      <div className="text-center">
+                                          <div className="text-xs text-slate-300 uppercase tracking-wider font-semibold">Classification</div>
+                                          <div className="mt-1">
+                                              <span className={`inline-block px-3 py-1 rounded-md text-xs font-black uppercase tracking-wider ${
+                                                  totalEvalScore >= 85 ? "bg-emerald-500 text-white shadow-xs" :
+                                                  totalEvalScore >= 70 ? "bg-blue-500 text-white shadow-xs" :
+                                                  totalEvalScore >= 50 ? "bg-amber-500 text-slate-950 shadow-xs" :
+                                                  "bg-red-500 text-white shadow-xs"
+                                              }`}>
+                                                  {totalEvalScore >= 85 ? "Grade A (Best)" :
+                                                   totalEvalScore >= 70 ? "Grade B (Qualified)" :
+                                                   totalEvalScore >= 50 ? "Grade C (Marginal)" : "Grade D (Ineligible)"}
+                                              </span>
+                                          </div>
+                                      </div>
+
+                                      <div className="h-10 w-px bg-white/20"></div>
+
+                                      <div className="text-center">
+                                          <div className="text-xs text-slate-300 uppercase tracking-wider font-semibold">Decision</div>
+                                          <div className="text-sm font-bold text-white mt-1">
+                                              {evalRecommendation === "RECOMMENDED_BEST" ? "⭐ Top Choice" :
+                                               evalRecommendation === "QUALIFIED" ? "✅ Qualified" :
+                                               evalRecommendation === "NEEDS_CLARIFICATION" ? "⚠️ Clarify" : "❌ Rejected"}
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+
+                              {/* Progress bar */}
+                              <div className="mt-6 pt-4 border-t border-white/10">
+                                  <div className="flex justify-between text-xs text-slate-300 mb-1.5 font-medium">
+                                      <span>Cumulative Score Progress</span>
+                                      <span>{totalEvalScore}% of 100 Points</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden p-0.5 border border-white/10">
+                                      <div 
+                                          className={`h-full rounded-full transition-all duration-500 ${
+                                              totalEvalScore >= 85 ? "bg-gradient-to-r from-emerald-500 to-green-400" :
+                                              totalEvalScore >= 70 ? "bg-gradient-to-r from-blue-500 to-cyan-400" :
+                                              totalEvalScore >= 50 ? "bg-gradient-to-r from-amber-500 to-yellow-400" :
+                                              "bg-gradient-to-r from-red-600 to-red-400"
+                                          }`}
+                                          style={{ width: `${Math.min(100, Math.max(5, totalEvalScore))}%` }}
+                                      ></div>
+                                  </div>
+                              </div>
+                          </div>
+
+                          {evalMsg && (
+                              <div className={`p-4 rounded-xl border text-sm font-medium flex items-center justify-between ${
+                                  evalMsg.type === "success" 
+                                      ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+                                      : "bg-red-50 border-red-200 text-red-800"
+                              }`}>
+                                  <span>{evalMsg.text}</span>
+                                  <button onClick={() => setEvalMsg(null)} className="text-xs font-bold underline ml-4">Dismiss</button>
+                              </div>
+                          )}
+
+                          {/* 5 Criteria Evaluation Cards Grid */}
+                          <div className="space-y-6">
+
+                              {/* CRITERION 1: Hospital Projects > 300 Beds */}
+                              <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+                                  <div className="px-6 py-4 bg-slate-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                      <div>
+                                          <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                                              Criterion 1 · Max 20 Pts
+                                          </span>
+                                          <h4 className="text-base font-bold text-gray-900 mt-1">
+                                              Projects in Hospitals with &gt;300 Beds (Last 3 Years: FY 25-26, FY 24-25, FY 23-24)
+                                          </h4>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                          <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5 cursor-pointer">
+                                              <input 
+                                                  type="checkbox"
+                                                  checked={evalHospitalsMeets}
+                                                  onChange={(e) => setEvalHospitalsMeets(e.target.checked)}
+                                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                                              />
+                                              <span>Meets Criterion</span>
+                                          </label>
+                                          <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-3 py-1 rounded-lg">
+                                              <span className="text-xs font-bold text-gray-500">Score:</span>
+                                              <input 
+                                                  type="number"
+                                                  min="0"
+                                                  max="20"
+                                                  value={evalHospitalsScore}
+                                                  onChange={(e) => setEvalHospitalsScore(Math.min(20, Math.max(0, Number(e.target.value))))}
+                                                  className="w-12 text-center font-bold text-sm bg-white border border-gray-300 rounded py-0.5 px-1 font-mono focus:ring-blue-500 focus:border-blue-500"
+                                              />
+                                              <span className="text-xs text-gray-500 font-bold">/20</span>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                      {/* Vendor Submitted Data */}
+                                      <div className="lg:col-span-7 space-y-3">
+                                          <div className="flex items-center justify-between text-xs text-gray-500 border-b pb-1 font-semibold">
+                                              <span>Vendor Submitted Information</span>
+                                              <span className="text-gray-700">Total Reported Projects: <strong>{selectedVendor.projects_completed_count || (selectedVendor.projects || []).length}</strong></span>
+                                          </div>
+                                          {selectedVendor.projects && selectedVendor.projects.length > 0 ? (
+                                              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                                                  <table className="min-w-full divide-y divide-gray-200 text-xs">
+                                                      <thead className="bg-gray-50 text-gray-600">
+                                                          <tr>
+                                                              <th className="px-3 py-2 text-left font-bold">Hospital / Institution</th>
+                                                              <th className="px-3 py-2 text-left font-bold">Year</th>
+                                                              <th className="px-3 py-2 text-center font-bold">Bed Count</th>
+                                                              <th className="px-3 py-2 text-right font-bold">Cost (Cr)</th>
+                                                              <th className="px-3 py-2 text-left font-bold">Duration</th>
+                                                          </tr>
+                                                      </thead>
+                                                      <tbody className="divide-y divide-gray-100 bg-white">
+                                                          {selectedVendor.projects.map((p: any) => (
+                                                              <tr key={p.id} className={p.is_300_plus_beds ? "bg-emerald-50/50" : ""}>
+                                                                  <td className="px-3 py-2 font-medium text-gray-900">{p.hospital_name}</td>
+                                                                  <td className="px-3 py-2 text-gray-600">{p.financial_year || "—"}</td>
+                                                                  <td className="px-3 py-2 text-center">
+                                                                      <span className={`px-1.5 py-0.5 rounded font-bold text-[11px] ${p.is_300_plus_beds ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                                                                          {p.bed_count || (p.is_300_plus_beds ? '>300' : '<300')} Beds
+                                                                      </span>
+                                                                  </td>
+                                                                  <td className="px-3 py-2 text-right font-mono font-bold text-gray-900">
+                                                                      {p.project_cost != null ? `₹${p.project_cost} Cr` : "—"}
+                                                                  </td>
+                                                                  <td className="px-3 py-2 text-gray-600">{p.project_duration || "—"}</td>
+                                                              </tr>
+                                                          ))}
+                                                      </tbody>
+                                                  </table>
+                                              </div>
+                                          ) : (
+                                              <p className="text-xs text-gray-500 italic p-3 bg-gray-50 rounded border">No hospital project line items entered in table.</p>
+                                          )}
+                                      </div>
+
+                                      {/* Evaluator Remarks */}
+                                      <div className="lg:col-span-5 bg-gray-50/70 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                                          <div>
+                                              <label className="text-xs font-bold text-gray-700 block mb-1">Evaluator Notes & Assessment for Criterion 1</label>
+                                              <textarea 
+                                                  value={evalHospitalsRemarks}
+                                                  onChange={(e) => setEvalHospitalsRemarks(e.target.value)}
+                                                  rows={3}
+                                                  placeholder="e.g. Verified 3 projects in 300+ bed medical colleges (SMS Jaipur, AIIMS). Excellent track record."
+                                                  className="w-full text-xs p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                              />
+                                          </div>
+                                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                              <span>Score Guideline: 18-20 = ≥3 Major 300+ Bed Hospitals</span>
+                                              <span className="font-bold text-blue-700">{evalHospitalsScore} Pts</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+
+                              {/* CRITERION 2: Turnover in Last 3 Years */}
+                              <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+                                  <div className="px-6 py-4 bg-slate-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                      <div>
+                                          <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                                              Criterion 2 · Max 20 Pts
+                                          </span>
+                                          <h4 className="text-base font-bold text-gray-900 mt-1">
+                                              Turnover of the Company in Last 3 Years (FY 25-26, FY 24-25, FY 23-24)
+                                          </h4>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                          <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5 cursor-pointer">
+                                              <input 
+                                                  type="checkbox"
+                                                  checked={evalTurnoverMeets}
+                                                  onChange={(e) => setEvalTurnoverMeets(e.target.checked)}
+                                                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                                              />
+                                              <span>Meets Criterion</span>
+                                          </label>
+                                          <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg">
+                                              <span className="text-xs font-bold text-gray-500">Score:</span>
+                                              <input 
+                                                  type="number"
+                                                  min="0"
+                                                  max="20"
+                                                  value={evalTurnoverScore}
+                                                  onChange={(e) => setEvalTurnoverScore(Math.min(20, Math.max(0, Number(e.target.value))))}
+                                                  className="w-12 text-center font-bold text-sm bg-white border border-gray-300 rounded py-0.5 px-1 font-mono focus:ring-emerald-500 focus:border-emerald-500"
+                                              />
+                                              <span className="text-xs text-gray-500 font-bold">/20</span>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                      {/* Vendor Submitted Data */}
+                                      <div className="lg:col-span-7">
+                                          <div className="text-xs text-gray-500 border-b pb-1 font-semibold mb-3">Vendor Reported Turnover</div>
+                                          <div className="grid grid-cols-3 gap-3 text-center">
+                                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                  <span className="text-[11px] text-gray-500 block font-semibold">FY 2025-26 (Est/Ongoing)</span>
+                                                  <span className="text-base font-bold text-gray-900 font-mono mt-1 block">
+                                                      {selectedVendor.financials?.[0]?.turnover_fy1 != null ? `₹${selectedVendor.financials[0].turnover_fy1} Cr` : "—"}
+                                                  </span>
+                                              </div>
+                                              <div className="p-3 bg-emerald-50/70 rounded-lg border border-emerald-200">
+                                                  <span className="text-[11px] text-emerald-800 block font-bold">FY 2024-25 (Audited)</span>
+                                                  <span className="text-base font-black text-emerald-900 font-mono mt-1 block">
+                                                      {selectedVendor.financials?.[0]?.turnover_fy2 != null ? `₹${selectedVendor.financials[0].turnover_fy2} Cr` : "—"}
+                                                  </span>
+                                              </div>
+                                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                  <span className="text-[11px] text-gray-500 block font-semibold">FY 2023-24</span>
+                                                  <span className="text-base font-bold text-gray-900 font-mono mt-1 block">
+                                                      {selectedVendor.financials?.[0]?.turnover_fy3 != null ? `₹${selectedVendor.financials[0].turnover_fy3} Cr` : "—"}
+                                                  </span>
+                                              </div>
+                                          </div>
+                                          <div className="mt-3 p-2 bg-slate-50 border border-slate-200 rounded text-xs flex justify-between">
+                                              <span className="text-gray-600">Average 3-Year Annual Turnover:</span>
+                                              <span className="font-bold text-gray-900 font-mono">
+                                                  {(() => {
+                                                      const f = selectedVendor.financials?.[0];
+                                                      if (!f) return "—";
+                                                      const vals = [f.turnover_fy1, f.turnover_fy2, f.turnover_fy3].filter((x: any) => x != null && Number(x) > 0);
+                                                      if (vals.length === 0) return "—";
+                                                      const avg = vals.reduce((a: number, b: number) => a + Number(b), 0) / vals.length;
+                                                      return `₹${avg.toFixed(2)} Crore`;
+                                                  })()}
+                                              </span>
+                                          </div>
+                                      </div>
+
+                                      {/* Evaluator Remarks */}
+                                      <div className="lg:col-span-5 bg-gray-50/70 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                                          <div>
+                                              <label className="text-xs font-bold text-gray-700 block mb-1">Evaluator Notes & Financial Stability Rating</label>
+                                              <textarea 
+                                                  value={evalTurnoverRemarks}
+                                                  onChange={(e) => setEvalTurnoverRemarks(e.target.value)}
+                                                  rows={3}
+                                                  placeholder="e.g. Healthy steady turnover growth over 3 years. Substantial working capital."
+                                                  className="w-full text-xs p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
+                                              />
+                                          </div>
+                                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                              <span>Score Guideline: 18-20 = Exceeds turnover benchmark</span>
+                                              <span className="font-bold text-emerald-700">{evalTurnoverScore} Pts</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+
+                              {/* CRITERION 3: High-Value Projects (> Rs. [X] Crore) */}
+                              <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+                                  <div className="px-6 py-4 bg-slate-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                      <div>
+                                          <span className="text-xs font-bold uppercase tracking-wider text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full">
+                                              Criterion 3 · Max 20 Pts
+                                          </span>
+                                          <h4 className="text-base font-bold text-gray-900 mt-1">
+                                              Projects Delivered with Project Cost &gt; Rs. {selectedVendor.high_value_projects_threshold_cr || 1.0} Crore
+                                          </h4>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                          <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5 cursor-pointer">
+                                              <input 
+                                                  type="checkbox"
+                                                  checked={evalHighValueMeets}
+                                                  onChange={(e) => setEvalHighValueMeets(e.target.checked)}
+                                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-4 h-4"
+                                              />
+                                              <span>Meets Criterion</span>
+                                          </label>
+                                          <div className="flex items-center gap-1 bg-purple-50 border border-purple-200 px-3 py-1 rounded-lg">
+                                              <span className="text-xs font-bold text-gray-500">Score:</span>
+                                              <input 
+                                                  type="number"
+                                                  min="0"
+                                                  max="20"
+                                                  value={evalHighValueScore}
+                                                  onChange={(e) => setEvalHighValueScore(Math.min(20, Math.max(0, Number(e.target.value))))}
+                                                  className="w-12 text-center font-bold text-sm bg-white border border-gray-300 rounded py-0.5 px-1 font-mono focus:ring-purple-500 focus:border-purple-500"
+                                              />
+                                              <span className="text-xs text-gray-500 font-bold">/20</span>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                      {/* Vendor Submitted Data */}
+                                      <div className="lg:col-span-7 space-y-2">
+                                          <div className="text-xs text-gray-500 border-b pb-1 font-semibold">Vendor Scale & High-Value Delivery</div>
+                                          <div className="flex items-center gap-4 py-2">
+                                              <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 text-center flex-1">
+                                                  <span className="text-xs text-purple-700 font-semibold block">Projects &gt; ₹{selectedVendor.high_value_projects_threshold_cr || 1.0} Cr</span>
+                                                  <span className="text-2xl font-black text-purple-900 font-mono mt-0.5 block">
+                                                      {selectedVendor.high_value_projects_count ?? 
+                                                       (selectedVendor.projects || []).filter((p: any) => Number(p.project_cost) >= (selectedVendor.high_value_projects_threshold_cr || 1.0)).length}
+                                                  </span>
+                                              </div>
+                                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-center flex-1">
+                                                  <span className="text-xs text-gray-500 font-semibold block">Years in Business</span>
+                                                  <span className="text-2xl font-bold text-gray-800 font-mono mt-0.5 block">
+                                                      {selectedVendor.years_in_business || "—"} Yrs
+                                                  </span>
+                                              </div>
+                                          </div>
+                                          <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded border">
+                                              Confirmed high-value institutional installations reported:{" "}
+                                              {(selectedVendor.projects || [])
+                                                  .filter((p: any) => Number(p.project_cost) >= (selectedVendor.high_value_projects_threshold_cr || 1.0))
+                                                  .map((p: any) => `${p.hospital_name} (₹${p.project_cost} Cr)`)
+                                                  .join(", ") || "None explicitly listed in project breakdown."}
+                                          </div>
+                                      </div>
+
+                                      {/* Evaluator Remarks */}
+                                      <div className="lg:col-span-5 bg-gray-50/70 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                                          <div>
+                                              <label className="text-xs font-bold text-gray-700 block mb-1">Evaluator Notes for Large-Scale Delivery</label>
+                                              <textarea 
+                                                  value={evalHighValueRemarks}
+                                                  onChange={(e) => setEvalHighValueRemarks(e.target.value)}
+                                                  rows={3}
+                                                  placeholder="e.g. Demonstrated capability to handle turnkey equipment installations exceeding benchmark."
+                                                  className="w-full text-xs p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                                              />
+                                          </div>
+                                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                              <span>Score Guideline: 18-20 = High capacity & volume</span>
+                                              <span className="font-bold text-purple-700">{evalHighValueScore} Pts</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+
+                              {/* CRITERION 4: Infrastructure / Service Base at Jaipur & Rajasthan */}
+                              <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+                                  <div className="px-6 py-4 bg-slate-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                      <div>
+                                          <span className="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
+                                              Criterion 4 · Max 20 Pts
+                                          </span>
+                                          <h4 className="text-base font-bold text-gray-900 mt-1">
+                                              Infrastructure / Service Base at Jaipur and/or Rajasthan
+                                          </h4>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                          <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5 cursor-pointer">
+                                              <input 
+                                                  type="checkbox"
+                                                  checked={evalServiceBaseMeets}
+                                                  onChange={(e) => setEvalServiceBaseMeets(e.target.checked)}
+                                                  className="rounded border-gray-300 text-amber-600 focus:ring-amber-500 w-4 h-4"
+                                              />
+                                              <span>Meets Criterion</span>
+                                          </label>
+                                          <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg">
+                                              <span className="text-xs font-bold text-gray-500">Score:</span>
+                                              <input 
+                                                  type="number"
+                                                  min="0"
+                                                  max="20"
+                                                  value={evalServiceBaseScore}
+                                                  onChange={(e) => setEvalServiceBaseScore(Math.min(20, Math.max(0, Number(e.target.value))))}
+                                                  className="w-12 text-center font-bold text-sm bg-white border border-gray-300 rounded py-0.5 px-1 font-mono focus:ring-amber-500 focus:border-amber-500"
+                                              />
+                                              <span className="text-xs text-gray-500 font-bold">/20</span>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                      {/* Vendor Submitted Data */}
+                                      <div className="lg:col-span-7 space-y-3">
+                                          <div className="text-xs text-gray-500 border-b pb-1 font-semibold">Vendor Local Presence Details</div>
+                                          <div className="flex items-center gap-3">
+                                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                  selectedVendor.has_service_base_jaipur ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-red-100 text-red-800 border border-red-200'
+                                              }`}>
+                                                  {selectedVendor.has_service_base_jaipur ? '✓ Has Local Service Base in Jaipur/Rajasthan' : '✗ No Dedicated Jaipur Service Base'}
+                                              </span>
+                                              <span className="text-xs text-gray-500 font-medium">
+                                                  Registered City: <strong>{selectedVendor.city || 'N/A'}, {selectedVendor.state_province || 'N/A'}</strong>
+                                              </span>
+                                          </div>
+                                          <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
+                                              <span className="font-bold text-gray-700 block mb-1">Local Service / Depot Details:</span>
+                                              <p className="text-gray-600">
+                                                  {selectedVendor.financials?.[0]?.infrastructure_base_details || 
+                                                   [selectedVendor.address_line_1, selectedVendor.city, selectedVendor.state_province].filter(Boolean).join(", ") || 
+                                                   "No dedicated infrastructure description provided."}
+                                              </p>
+                                          </div>
+                                      </div>
+
+                                      {/* Evaluator Remarks */}
+                                      <div className="lg:col-span-5 bg-gray-50/70 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                                          <div>
+                                              <label className="text-xs font-bold text-gray-700 block mb-1">Evaluator Notes on Local Support & TAT</label>
+                                              <textarea 
+                                                  value={evalServiceBaseRemarks}
+                                                  onChange={(e) => setEvalServiceBaseRemarks(e.target.value)}
+                                                  rows={3}
+                                                  placeholder="e.g. Local service depot located at Sitapura Jaipur. 2-4 hour turnaround time verified."
+                                                  className="w-full text-xs p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-amber-500 focus:border-amber-500"
+                                              />
+                                          </div>
+                                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                              <span>Score Guideline: 20 = Full workshop & spares in Jaipur</span>
+                                              <span className="font-bold text-amber-700">{evalServiceBaseScore} Pts</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+
+                              {/* CRITERION 5: Audited Balance Sheet for FY 2024-25 */}
+                              <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+                                  <div className="px-6 py-4 bg-slate-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                      <div>
+                                          <span className="text-xs font-bold uppercase tracking-wider text-cyan-700 bg-cyan-50 border border-cyan-200 px-2.5 py-0.5 rounded-full">
+                                              Criterion 5 · Max 20 Pts
+                                          </span>
+                                          <h4 className="text-base font-bold text-gray-900 mt-1">
+                                              Audited Balance Sheet for FY 2024-25 (with CA Certification)
+                                          </h4>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                          <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5 cursor-pointer">
+                                              <input 
+                                                  type="checkbox"
+                                                  checked={evalBalanceSheetVerified}
+                                                  onChange={(e) => setEvalBalanceSheetVerified(e.target.checked)}
+                                                  className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 w-4 h-4"
+                                              />
+                                              <span>Document Verified</span>
+                                          </label>
+                                          <div className="flex items-center gap-1 bg-cyan-50 border border-cyan-200 px-3 py-1 rounded-lg">
+                                              <span className="text-xs font-bold text-gray-500">Score:</span>
+                                              <input 
+                                                  type="number"
+                                                  min="0"
+                                                  max="20"
+                                                  value={evalBalanceSheetScore}
+                                                  onChange={(e) => setEvalBalanceSheetScore(Math.min(20, Math.max(0, Number(e.target.value))))}
+                                                  className="w-12 text-center font-bold text-sm bg-white border border-gray-300 rounded py-0.5 px-1 font-mono focus:ring-cyan-500 focus:border-cyan-500"
+                                              />
+                                              <span className="text-xs text-gray-500 font-bold">/20</span>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                      {/* Vendor Submitted Data */}
+                                      <div className="lg:col-span-7 space-y-3">
+                                          <div className="text-xs text-gray-500 border-b pb-1 font-semibold">Uploaded Compliance Attachment</div>
+                                          {(() => {
+                                              const bsDoc = vendorDocs.find(d => d.document_type === "BALANCE_SHEET");
+                                              if (bsDoc) {
+                                                  return (
+                                                      <div className="p-4 bg-cyan-50/50 border border-cyan-200 rounded-xl flex items-center justify-between">
+                                                          <div className="flex items-center space-x-3">
+                                                              <div className="text-2xl">📑</div>
+                                                              <div>
+                                                                  <span className="font-bold text-gray-900 text-xs block">Audited Balance Sheet (FY 2024-25)</span>
+                                                                  <span className="text-gray-500 text-[11px] block truncate max-w-xs">{bsDoc.latest_version?.original_filename || "balance_sheet_2024_25.pdf"}</span>
+                                                              </div>
+                                                          </div>
+                                                          <button 
+                                                              onClick={() => handleViewPdf(selectedVendor.id, bsDoc.id)}
+                                                              className="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
+                                                          >
+                                                              View PDF 📄
+                                                          </button>
+                                                      </div>
+                                                  );
+                                              }
+                                              return (
+                                                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                                                      ⚠️ No document tagged as "Audited Balance Sheet (FY 2024-25)" found. Check "Documents & Catalogs" tab to view all general uploads.
+                                                  </div>
+                                              );
+                                          })()}
+                                      </div>
+
+                                      {/* Evaluator Remarks */}
+                                      <div className="lg:col-span-5 bg-gray-50/70 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                                          <div>
+                                              <label className="text-xs font-bold text-gray-700 block mb-1">Evaluator Notes on Balance Sheet & CA Audit</label>
+                                              <textarea 
+                                                  value={evalBalanceSheetRemarks}
+                                                  onChange={(e) => setEvalBalanceSheetRemarks(e.target.value)}
+                                                  rows={3}
+                                                  placeholder="e.g. Audited balance sheet verified. CA signed with UDIN number, positive net worth."
+                                                  className="w-full text-xs p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-cyan-500 focus:border-cyan-500"
+                                              />
+                                          </div>
+                                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                              <span>Score Guideline: 20 = CA signed + UDIN verified</span>
+                                              <span className="font-bold text-cyan-700">{evalBalanceSheetScore} Pts</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+
+                          </div>
+
+                          {/* Committee Final Assessment & Recommendation */}
+                          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                              <h4 className="text-base font-bold text-gray-900 border-b pb-3 mb-4 flex items-center justify-between">
+                                  <span>Procurement Committee Final Assessment & Recommendation</span>
+                                  <span className="text-xs font-semibold text-gray-400 font-mono">ID: {selectedVendor.id}</span>
+                              </h4>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                                  <div>
+                                      <label className="text-xs font-bold text-gray-700 block mb-1">Empanelment Recommendation</label>
+                                      <select 
+                                          value={evalRecommendation}
+                                          onChange={(e) => setEvalRecommendation(e.target.value)}
+                                          className="w-full text-sm font-bold border-gray-300 rounded-lg py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 shadow-xs"
+                                      >
+                                          <option value="RECOMMENDED_BEST">🏆 RECOMMENDED_BEST (Top Choice / Best Vendor)</option>
+                                          <option value="QUALIFIED">✅ QUALIFIED (Meets All Standards)</option>
+                                          <option value="NEEDS_CLARIFICATION">⚠️ NEEDS_CLARIFICATION (Additional Proof Required)</option>
+                                          <option value="REJECTED">❌ REJECTED (Disqualified / Below Criteria)</option>
+                                      </select>
+                                      <span className="text-[11px] text-gray-500 mt-1 block">Marks whether this vendor is ranked best in their category.</span>
+                                  </div>
+
+                                  <div>
+                                      <label className="text-xs font-bold text-gray-700 block mb-1">Computed Evaluation Grade</label>
+                                      <select 
+                                          value={evalGrade}
+                                          onChange={(e) => setEvalGrade(e.target.value)}
+                                          className="w-full text-sm font-bold border-gray-300 rounded-lg py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 shadow-xs"
+                                      >
+                                          <option value="A_GRADE">Grade A (Score ≥ 85) - Top Tier</option>
+                                          <option value="B_GRADE">Grade B (Score 70 - 84) - Qualified</option>
+                                          <option value="C_GRADE">Grade C (Score 50 - 69) - Average</option>
+                                          <option value="D_GRADE">Grade D (Score &lt; 50) - Ineligible</option>
+                                      </select>
+                                      <span className="text-[11px] text-gray-500 mt-1 block">Current Total Score: <strong>{totalEvalScore}/100</strong></span>
+                                  </div>
+
+                                  <div>
+                                      <label className="text-xs font-bold text-gray-700 block mb-1">Evaluator / Committee Name</label>
+                                      <input 
+                                          type="text"
+                                          value={evalEvaluatorName}
+                                          onChange={(e) => setEvalEvaluatorName(e.target.value)}
+                                          placeholder="e.g. Procurement Committee / Admin"
+                                          className="w-full text-sm font-medium border-gray-300 rounded-lg py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 shadow-xs"
+                                      />
+                                      <span className="text-[11px] text-gray-500 mt-1 block">Sign-off identifier for audit compliance.</span>
+                                  </div>
+                              </div>
+
+                              <div className="mb-6">
+                                  <label className="text-xs font-bold text-gray-700 block mb-1">Overall Committee Summary & Empanelment Justification</label>
+                                  <textarea 
+                                      value={evalSummaryNotes}
+                                      onChange={(e) => setEvalSummaryNotes(e.target.value)}
+                                      rows={3}
+                                      placeholder="Provide final justification on why this vendor is ranked best or what specific strengths they bring (e.g., Extensive bed capacity experience, strong local Jaipur service base, verified balance sheet)..."
+                                      className="w-full text-xs p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-gray-100">
+                                  <div className="text-xs text-gray-500">
+                                      Saving updates the vendor's ranking and displays their badge in the comparative table.
+                                  </div>
+                                  <div className="flex gap-3 w-full sm:w-auto">
+                                      <button 
+                                          type="button"
+                                          onClick={handleSaveEvaluation}
+                                          disabled={savingEval}
+                                          className="flex-1 sm:flex-initial px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                                      >
+                                          {savingEval ? (
+                                              <>
+                                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                  <span>Saving Evaluation...</span>
+                                              </>
+                                          ) : (
+                                              <>
+                                                  <span>💾 Save & Update Vendor Ranking</span>
+                                              </>
+                                          )}
+                                      </button>
+                                  </div>
+                              </div>
+                          </div>
+
+                      </div>
+                  )}
+
                   {/* TAB 1: Profile */}
                   {activeTab === "profile" && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -784,25 +1597,47 @@ export default function AdminVendorsPage() {
         ) : (
           /* Vendor List Table */
           <div className="bg-white shadow-lg rounded-xl overflow-hidden border border-gray-100 animate-fade-in-up">
-            <div className="px-6 py-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50">
-              <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                Registered Vendors 
-                <span className="ml-3 bg-blue-100 text-blue-800 text-xs py-0.5 px-2.5 rounded-full font-bold">{filteredVendors.length}</span>
-              </h2>
-              <div className="flex items-center space-x-3 w-full sm:w-auto">
-                <span className="text-sm text-gray-500 font-semibold uppercase tracking-wider">Status Filter:</span>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 py-2 pl-3 pr-8 shadow-sm font-medium"
-                >
-                  <option value="ALL">All Vendors</option>
-                  <option value="DRAFT">Draft</option>
-                  <option value="SUBMITTED">Submitted</option>
-                  <option value="UNDER_REVIEW">Under Review</option>
-                  <option value="APPROVED">Approved</option>
-                  <option value="REJECTED">Rejected</option>
-                </select>
+            <div className="px-6 py-5 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 flex items-center">
+                  Registered Vendors & Empanelment Rankings
+                  <span className="ml-3 bg-blue-100 text-blue-800 text-xs py-0.5 px-2.5 rounded-full font-bold">{filteredVendors.length}</span>
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Sorted according to 5-point pre-qualification scores to easily identify the best vendor.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Sort:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e: any) => setSortBy(e.target.value)}
+                    className="text-xs border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 py-1.5 pl-2.5 pr-7 shadow-xs font-semibold bg-white text-gray-800"
+                  >
+                    <option value="score">🏆 Best Ranking (By Score)</option>
+                    <option value="turnover">💰 Turnover (Highest First)</option>
+                    <option value="projects">🏥 Hospital Projects (Most First)</option>
+                    <option value="default">⏱️ Registration Date (Newest)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Status:</span>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="text-xs border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 py-1.5 pl-2.5 pr-7 shadow-xs font-medium bg-white text-gray-800"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="SUBMITTED">Submitted</option>
+                    <option value="UNDER_REVIEW">Under Review</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -814,59 +1649,163 @@ export default function AdminVendorsPage() {
             ) : filteredVendors.length === 0 ? (
               <div className="p-16 text-center text-gray-500">
                 <div className="text-5xl mb-4 opacity-50">🏢</div>
-                <p className="text-lg font-medium">No vendors found in this status.</p>
+                <p className="text-lg font-medium">No vendors found matching criteria.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 text-left">
                   <thead className="bg-white">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Company Legal Name</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Type / Location</th>
-                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
+                    <tr className="border-b border-gray-200">
+                      <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Vendor Legal Name</th>
+                      <th className="px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Location</th>
+                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">1. &gt;300 Bed Projects</th>
+                      <th className="px-4 py-3.5 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">2. Avg Turnover</th>
+                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">4. Jaipur Base</th>
+                      <th className="px-5 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">🏆 Evaluation &amp; Rank</th>
+                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3.5 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {filteredVendors.map((v) => (
-                      <tr key={v.id} className="hover:bg-blue-50 transition-colors group cursor-pointer" onClick={() => selectVendorForInspection(v.id)}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-bold text-gray-900">{v.legal_name}</div>
-                          <div className="text-xs text-gray-500 mt-1">PAN: {v.pan_number || 'N/A'}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{v.organization_type || "N/A"}</div>
-                          <div className="text-xs text-gray-500 mt-1">{v.city ? `${v.city}, ` : ''}{v.country || "N/A"}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold tracking-wide ${
-                            v.status === "APPROVED" ? "bg-green-100 text-green-800" :
-                            v.status === "REJECTED" ? "bg-red-100 text-red-800" :
-                            v.status === "SUBMITTED" || v.status === "UNDER_REVIEW" ? "bg-blue-100 text-blue-800" :
-                            "bg-yellow-100 text-yellow-800"
-                          }`}>
-                            {v.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); selectVendorForInspection(v.id); }}
-                              className="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1.5 rounded-lg font-bold group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm text-xs"
-                            >
-                              Inspect Profile →
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDeleteVendor(v.id, v.legal_name); }}
-                              disabled={verifying}
-                              className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg font-bold transition-all shadow-sm text-xs"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredVendors.map((v, index) => {
+                      const latestEval = v.latest_evaluation;
+                      const isTopRanked = sortBy === "score" && latestEval && index === 0 && latestEval.total_score >= 80;
+
+                      return (
+                        <tr 
+                          key={v.id} 
+                          className={`hover:bg-blue-50/60 transition-colors group cursor-pointer ${
+                            isTopRanked ? "bg-amber-50/40" : ""
+                          }`} 
+                          onClick={() => selectVendorForInspection(v.id, "evaluation")}
+                        >
+                          {/* Company Name & PAN */}
+                          <td className="px-5 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {isTopRanked && (
+                                <span className="text-base" title="Top Ranked Best Vendor">👑</span>
+                              )}
+                              <div>
+                                <div className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                                  {v.legal_name}
+                                </div>
+                                <div className="text-xs text-gray-500 font-mono mt-0.5">
+                                  PAN: {v.pan_number || 'N/A'} • {v.organization_type || 'Vendor'}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Location */}
+                          <td className="px-4 py-4 whitespace-nowrap text-xs text-gray-600">
+                            <div>{v.city || "—"}</div>
+                            <div className="text-gray-400 text-[11px]">{v.state_province || v.country || "India"}</div>
+                          </td>
+
+                          {/* Criterion 1: Hospital Projects */}
+                          <td className="px-4 py-4 whitespace-nowrap text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                              (v.projects_completed_count || 0) > 0 
+                                ? "bg-blue-50 text-blue-700 border border-blue-200" 
+                                : "bg-gray-100 text-gray-500"
+                            }`}>
+                              {v.projects_completed_count || 0} Project{v.projects_completed_count !== 1 ? "s" : ""}
+                            </span>
+                          </td>
+
+                          {/* Criterion 2: 3-Yr Turnover */}
+                          <td className="px-4 py-4 whitespace-nowrap text-right text-xs font-mono font-bold text-gray-900">
+                            {v.avg_turnover != null && Number(v.avg_turnover) > 0 ? (
+                              <span className="text-emerald-700">₹{Number(v.avg_turnover).toFixed(2)} Cr</span>
+                            ) : v.turnover_fy2 != null && Number(v.turnover_fy2) > 0 ? (
+                              <span className="text-emerald-700">₹{Number(v.turnover_fy2).toFixed(2)} Cr</span>
+                            ) : (
+                              <span className="text-gray-400 font-normal">—</span>
+                            )}
+                          </td>
+
+                          {/* Criterion 4: Jaipur Base */}
+                          <td className="px-4 py-4 whitespace-nowrap text-center">
+                            {v.has_service_base_jaipur ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800 border border-green-200">
+                                ✓ Jaipur Base
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </td>
+
+                          {/* Evaluation Score & Best Rank */}
+                          <td className="px-5 py-4 whitespace-nowrap text-center">
+                            {latestEval ? (
+                              <div className="inline-flex flex-col items-center">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-black text-sm text-gray-900">
+                                    {latestEval.total_score}
+                                  </span>
+                                  <span className="text-[11px] text-gray-400 font-normal">/100</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                                    latestEval.total_score >= 85 ? "bg-emerald-100 text-emerald-800 border border-emerald-300" :
+                                    latestEval.total_score >= 70 ? "bg-blue-100 text-blue-800 border border-blue-300" :
+                                    latestEval.total_score >= 50 ? "bg-amber-100 text-amber-800 border border-amber-300" :
+                                    "bg-red-100 text-red-800 border border-red-300"
+                                  }`}>
+                                    {latestEval.evaluation_grade ? latestEval.evaluation_grade.replace('_GRADE', '') : (latestEval.total_score >= 85 ? 'A' : 'B')}
+                                  </span>
+                                </div>
+                                {latestEval.recommendation === "RECOMMENDED_BEST" ? (
+                                  <span className="mt-1 inline-flex items-center text-[10px] font-black text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+                                    ⭐ Best Choice
+                                  </span>
+                                ) : latestEval.recommendation === "QUALIFIED" ? (
+                                  <span className="mt-1 inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+                                    ✓ Qualified
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); selectVendorForInspection(v.id, "evaluation"); }}
+                                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
+                              >
+                                ✍️ Evaluate
+                              </button>
+                            )}
+                          </td>
+
+                          {/* Workflow Status */}
+                          <td className="px-4 py-4 whitespace-nowrap text-center">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wide ${
+                              v.status === "APPROVED" ? "bg-green-100 text-green-800 border border-green-200" :
+                              v.status === "REJECTED" ? "bg-red-100 text-red-800 border border-red-200" :
+                              v.status === "SUBMITTED" || v.status === "UNDER_REVIEW" ? "bg-blue-100 text-blue-800 border border-blue-200" :
+                              "bg-yellow-100 text-yellow-800 border border-yellow-200"
+                            }`}>
+                              {v.status}
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="px-5 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); selectVendorForInspection(v.id, "evaluation"); }}
+                                className="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1.5 rounded-lg font-bold group-hover:bg-blue-600 group-hover:text-white transition-all shadow-xs text-xs"
+                              >
+                                Inspect &amp; Score →
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteVendor(v.id, v.legal_name); }}
+                                disabled={verifying}
+                                className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg font-bold transition-all shadow-xs text-xs"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

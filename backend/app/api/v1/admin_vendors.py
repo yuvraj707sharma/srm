@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional, List
 from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
-from app.models.vendor import VendorOrganization
+from app.models.vendor import VendorOrganization, VendorEvaluation
 from app.api.deps import require_admin_or_vendor_owner, require_permission
 from app.core.exceptions import APIException
 from app.services.vendor import VendorService
@@ -34,29 +35,69 @@ async def admin_list_vendors(
     _ = Depends(require_permission("vendors.approve"))
 ):
     from app.models.user import User
+    from app.models.vendor import VendorEvaluation, VendorFinancials
     # Only show vendor organizations whose user has completed OTP verification
     verified_vendor_ids = select(User.vendor_organization_id).where(
         User.is_verified == True,
         User.vendor_organization_id.isnot(None)
     )
-    stmt = select(VendorOrganization).where(
-        VendorOrganization.id.in_(verified_vendor_ids)
-    ).order_by(desc(VendorOrganization.created_at))
+    stmt = (
+        select(VendorOrganization)
+        .options(
+            selectinload(VendorOrganization.financials),
+            selectinload(VendorOrganization.evaluations)
+        )
+        .where(VendorOrganization.id.in_(verified_vendor_ids))
+        .order_by(desc(VendorOrganization.created_at))
+    )
     
     result = await db.execute(stmt)
     vendors = result.scalars().all()
-    return [
-        {
+    
+    res = []
+    for v in vendors:
+        # compute average turnover
+        t_vals = []
+        if v.financials:
+            for val in [v.financials.turnover_fy1, v.financials.turnover_fy2, v.financials.turnover_fy3]:
+                if val is not None:
+                    try:
+                        t_vals.append(float(val))
+                    except (ValueError, TypeError):
+                        pass
+        avg_turnover = round(sum(t_vals) / len(t_vals), 2) if t_vals else None
+
+        latest_eval = None
+        if v.evaluations and len(v.evaluations) > 0:
+            e = v.evaluations[0]
+            latest_eval = {
+                "id": e.id,
+                "total_score": e.total_score,
+                "evaluation_grade": e.evaluation_grade,
+                "recommendation": e.recommendation,
+                "evaluator_name": e.evaluator_name,
+                "updated_at": e.updated_at.isoformat() if e.updated_at else None
+            }
+
+        res.append({
             "id": v.id,
             "legal_name": v.legal_name,
             "trade_name": v.trade_name,
             "organization_type": v.organization_type,
+            "pan_number": v.pan_number,
             "country": v.country,
+            "city": v.city,
+            "state_province": v.state_province,
             "status": v.status,
             "verification_status": v.verification_status,
+            "projects_completed_count": v.projects_completed_count,
+            "has_service_base_jaipur": v.has_service_base_jaipur,
+            "turnover_fy2": float(v.financials.turnover_fy2) if (v.financials and v.financials.turnover_fy2) else None,
+            "avg_turnover": avg_turnover,
+            "latest_evaluation": latest_eval,
             "created_at": v.created_at.isoformat() if v.created_at else None
-        } for v in vendors
-    ]
+        })
+    return res
 
 
 @router.get("/{vendor_id}")
@@ -117,6 +158,7 @@ async def admin_get_vendor_profile(
         "years_in_business": org_with_contacts.years_in_business,
         "projects_completed_count": org_with_contacts.projects_completed_count,
         "high_value_projects_count": org_with_contacts.high_value_projects_count,
+        "high_value_projects_threshold_cr": float(org_with_contacts.high_value_projects_threshold_cr) if org_with_contacts.high_value_projects_threshold_cr is not None else 1.0,
         "has_service_base_jaipur": org_with_contacts.has_service_base_jaipur,
         "is_blacklisted": org_with_contacts.is_blacklisted,
         "pending_litigation": org_with_contacts.pending_litigation,
@@ -166,7 +208,178 @@ async def admin_get_vendor_profile(
                 "financial_year": p.financial_year,
                 "scope_of_work": p.scope_of_work
             } for p in (org_with_contacts.projects or [])
+        ],
+        "evaluations": [
+            {
+                "id": e.id,
+                "hospitals_score": e.hospitals_score,
+                "hospitals_meets": e.hospitals_meets,
+                "hospitals_remarks": e.hospitals_remarks,
+                "turnover_score": e.turnover_score,
+                "turnover_meets": e.turnover_meets,
+                "turnover_remarks": e.turnover_remarks,
+                "high_value_projects_score": e.high_value_projects_score,
+                "high_value_projects_meets": e.high_value_projects_meets,
+                "high_value_projects_remarks": e.high_value_projects_remarks,
+                "service_base_score": e.service_base_score,
+                "service_base_meets": e.service_base_meets,
+                "service_base_remarks": e.service_base_remarks,
+                "balance_sheet_score": e.balance_sheet_score,
+                "balance_sheet_verified": e.balance_sheet_verified,
+                "balance_sheet_remarks": e.balance_sheet_remarks,
+                "total_score": e.total_score,
+                "evaluation_grade": e.evaluation_grade,
+                "recommendation": e.recommendation,
+                "evaluator_name": e.evaluator_name,
+                "admin_summary_notes": e.admin_summary_notes,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "updated_at": e.updated_at.isoformat() if e.updated_at else None
+            } for e in sorted(org_with_contacts.evaluations or [], key=lambda x: str(x.created_at or ""), reverse=True)
         ]
+    }
+
+
+@router.get("/{vendor_id}/evaluation")
+async def admin_get_vendor_evaluation(
+    vendor_id: str = Path(...),
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_permission("vendors.approve"))
+):
+    stmt = select(VendorEvaluation).where(VendorEvaluation.vendor_organization_id == vendor_id).order_by(desc(VendorEvaluation.created_at))
+    res = await db.execute(stmt)
+    evaluation = res.scalars().first()
+    if not evaluation:
+        return {"evaluation": None}
+    return {
+        "evaluation": {
+            "id": evaluation.id,
+            "vendor_organization_id": evaluation.vendor_organization_id,
+            "hospitals_score": evaluation.hospitals_score,
+            "hospitals_meets": evaluation.hospitals_meets,
+            "hospitals_remarks": evaluation.hospitals_remarks,
+            "turnover_score": evaluation.turnover_score,
+            "turnover_meets": evaluation.turnover_meets,
+            "turnover_remarks": evaluation.turnover_remarks,
+            "high_value_projects_score": evaluation.high_value_projects_score,
+            "high_value_projects_meets": evaluation.high_value_projects_meets,
+            "high_value_projects_remarks": evaluation.high_value_projects_remarks,
+            "service_base_score": evaluation.service_base_score,
+            "service_base_meets": evaluation.service_base_meets,
+            "service_base_remarks": evaluation.service_base_remarks,
+            "balance_sheet_score": evaluation.balance_sheet_score,
+            "balance_sheet_verified": evaluation.balance_sheet_verified,
+            "balance_sheet_remarks": evaluation.balance_sheet_remarks,
+            "total_score": evaluation.total_score,
+            "evaluation_grade": evaluation.evaluation_grade,
+            "recommendation": evaluation.recommendation,
+            "evaluator_name": evaluation.evaluator_name,
+            "admin_summary_notes": evaluation.admin_summary_notes,
+            "created_at": evaluation.created_at.isoformat() if evaluation.created_at else None,
+            "updated_at": evaluation.updated_at.isoformat() if evaluation.updated_at else None
+        }
+    }
+
+
+@router.post("/{vendor_id}/evaluation")
+async def admin_save_vendor_evaluation(
+    vendor_id: str = Path(...),
+    data: Dict[str, Any] = None,
+    db: AsyncSession = Depends(get_db),
+    current_admin = Depends(require_permission("vendors.approve"))
+):
+    if data is None:
+        data = {}
+        
+    stmt = select(VendorOrganization).where(VendorOrganization.id == vendor_id)
+    org = (await db.execute(stmt)).scalar_one_or_none()
+    if not org:
+        raise APIException("NOT_FOUND", "Vendor organization not found.", 404)
+
+    # Check if an evaluation already exists for this vendor
+    stmt_eval = select(VendorEvaluation).where(VendorEvaluation.vendor_organization_id == vendor_id).order_by(desc(VendorEvaluation.created_at))
+    evaluation = (await db.execute(stmt_eval)).scalars().first()
+
+    # Calculate scores
+    hospitals_score = min(max(int(data.get("hospitals_score", 0)), 0), 20)
+    turnover_score = min(max(int(data.get("turnover_score", 0)), 0), 20)
+    high_value_projects_score = min(max(int(data.get("high_value_projects_score", 0)), 0), 20)
+    service_base_score = min(max(int(data.get("service_base_score", 0)), 0), 20)
+    balance_sheet_score = min(max(int(data.get("balance_sheet_score", 0)), 0), 20)
+    total_score = hospitals_score + turnover_score + high_value_projects_score + service_base_score + balance_sheet_score
+
+    # Auto grade if not explicitly passed
+    grade = data.get("evaluation_grade")
+    if not grade:
+        if total_score >= 85:
+            grade = "A_GRADE"
+        elif total_score >= 70:
+            grade = "B_GRADE"
+        elif total_score >= 50:
+            grade = "C_GRADE"
+        else:
+            grade = "D_GRADE"
+
+    evaluator_name = getattr(current_admin, "full_name", None) or getattr(current_admin, "username", "Admin")
+
+    if not evaluation:
+        evaluation = VendorEvaluation(
+            vendor_organization_id=vendor_id,
+            hospitals_score=hospitals_score,
+            hospitals_meets=bool(data.get("hospitals_meets", False)),
+            hospitals_remarks=data.get("hospitals_remarks"),
+            turnover_score=turnover_score,
+            turnover_meets=bool(data.get("turnover_meets", False)),
+            turnover_remarks=data.get("turnover_remarks"),
+            high_value_projects_score=high_value_projects_score,
+            high_value_projects_meets=bool(data.get("high_value_projects_meets", False)),
+            high_value_projects_remarks=data.get("high_value_projects_remarks"),
+            service_base_score=service_base_score,
+            service_base_meets=bool(data.get("service_base_meets", False)),
+            service_base_remarks=data.get("service_base_remarks"),
+            balance_sheet_score=balance_sheet_score,
+            balance_sheet_verified=bool(data.get("balance_sheet_verified", False)),
+            balance_sheet_remarks=data.get("balance_sheet_remarks"),
+            total_score=total_score,
+            evaluation_grade=grade,
+            recommendation=data.get("recommendation", "QUALIFIED"),
+            evaluator_name=evaluator_name,
+            admin_summary_notes=data.get("admin_summary_notes")
+        )
+        db.add(evaluation)
+    else:
+        evaluation.hospitals_score = hospitals_score
+        evaluation.hospitals_meets = bool(data.get("hospitals_meets", False))
+        evaluation.hospitals_remarks = data.get("hospitals_remarks")
+        evaluation.turnover_score = turnover_score
+        evaluation.turnover_meets = bool(data.get("turnover_meets", False))
+        evaluation.turnover_remarks = data.get("turnover_remarks")
+        evaluation.high_value_projects_score = high_value_projects_score
+        evaluation.high_value_projects_meets = bool(data.get("high_value_projects_meets", False))
+        evaluation.high_value_projects_remarks = data.get("high_value_projects_remarks")
+        evaluation.service_base_score = service_base_score
+        evaluation.service_base_meets = bool(data.get("service_base_meets", False))
+        evaluation.service_base_remarks = data.get("service_base_remarks")
+        evaluation.balance_sheet_score = balance_sheet_score
+        evaluation.balance_sheet_verified = bool(data.get("balance_sheet_verified", False))
+        evaluation.balance_sheet_remarks = data.get("balance_sheet_remarks")
+        evaluation.total_score = total_score
+        evaluation.evaluation_grade = grade
+        evaluation.recommendation = data.get("recommendation", evaluation.recommendation)
+        evaluation.evaluator_name = evaluator_name
+        evaluation.admin_summary_notes = data.get("admin_summary_notes")
+
+    await db.commit()
+    await db.refresh(evaluation)
+
+    return {
+        "message": "Vendor evaluation saved successfully.",
+        "evaluation": {
+            "id": evaluation.id,
+            "total_score": evaluation.total_score,
+            "evaluation_grade": evaluation.evaluation_grade,
+            "recommendation": evaluation.recommendation,
+            "evaluator_name": evaluation.evaluator_name
+        }
     }
 
 

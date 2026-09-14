@@ -98,8 +98,11 @@ async def request_otp(
     user_agent = request.headers.get("user-agent")
     
     auth_service = AuthService(db)
-    await auth_service.request_otp(req_data.email, ip_address, user_agent)
-    return {"status": "otp_sent"}
+    otp_code = await auth_service.request_otp(req_data.email, ip_address, user_agent)
+    res = {"status": "otp_sent"}
+    if settings.ENVIRONMENT != "production":
+        res["dev_otp"] = otp_code
+    return res
 
 
 @router.post("/verify-otp", response_model=TokenResponse)
@@ -213,12 +216,15 @@ async def register_vendor(
             ip_address = request.client.host if request.client else None
             user_agent = request.headers.get("user-agent")
             auth_service = AuthService(db)
-            await auth_service.request_otp(email, ip_address, user_agent)
-            return {
+            otp_code = await auth_service.request_otp(email, ip_address, user_agent)
+            resp = {
                 "status": "otp_sent",
                 "email": email,
                 "message": "Account verification pending. A new 6-digit OTP has been sent to your email."
             }
+            if settings.ENVIRONMENT != "production":
+                resp["dev_otp"] = otp_code
+            return resp
         else:
             from app.core.exceptions import APIException
             raise APIException("ALREADY_REGISTERED", "This email is already registered and verified. Please sign in to your account.", 400)
@@ -264,10 +270,13 @@ async def register_vendor(
     user_agent = request.headers.get("user-agent")
     
     auth_service = AuthService(db)
-    await auth_service.request_otp(email, ip_address, user_agent)
+    otp_code = await auth_service.request_otp(email, ip_address, user_agent)
     
-    return {
+    resp_data = {
         "status": "otp_sent",
         "email": email,
         "message": "Vendor account created. Please enter the 6-digit OTP sent to your email."
     }
+    if settings.ENVIRONMENT != "production":
+        resp_data["dev_otp"] = otp_code
+    return resp_data

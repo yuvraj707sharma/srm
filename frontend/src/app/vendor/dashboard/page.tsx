@@ -138,11 +138,6 @@ export default function MinimalWhiteVendorDashboardPage() {
                 <div>
                   <div className="flex items-center space-x-3">
                     <h1 className="text-2xl font-bold text-gray-900">{vendor.legal_name}</h1>
-                    {vendor.vendor_code && (
-                      <span className="bg-gray-100 text-gray-700 text-xs font-mono px-2.5 py-1 rounded-md border border-gray-200 font-semibold">
-                        {vendor.vendor_code}
-                      </span>
-                    )}
                   </div>
                   <p className="text-sm text-gray-500 mt-1">
                     {vendor.trade_name ? `${vendor.trade_name} • ` : ""}
@@ -167,6 +162,42 @@ export default function MinimalWhiteVendorDashboardPage() {
                 </div>
               </div>
 
+              {/* Status Banner for Unapproved Vendors */}
+              {vendor.status !== "APPROVED" && (
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  {vendor.status === "DRAFT" ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-blue-900">
+                      <div className="flex items-start space-x-3">
+                        <span className="text-xl">📝</span>
+                        <div>
+                          <h4 className="font-bold text-sm">Onboarding in Progress (Draft)</h4>
+                          <p className="text-xs text-blue-700 mt-0.5">Please complete all 8 sections of your Master Profile and submit for verification. Tenders and bidding will be enabled upon administrative approval.</p>
+                        </div>
+                      </div>
+                      <Link href="/vendor/profile" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg whitespace-nowrap self-start sm:self-auto shadow-xs">
+                        Complete Profile →
+                      </Link>
+                    </div>
+                  ) : vendor.status === "REJECTED" ? (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start space-x-3 text-red-900">
+                      <span className="text-xl">⚠️</span>
+                      <div>
+                        <h4 className="font-bold text-sm">Profile Revision Required</h4>
+                        <p className="text-xs text-red-800 mt-0.5">Your profile submission requires revisions or document corrections. Please review your profile sections and resubmit.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start space-x-3 text-amber-900">
+                      <span className="text-xl">⏳</span>
+                      <div>
+                        <h4 className="font-bold text-sm">Registration Under Administrative Review</h4>
+                        <p className="text-xs text-amber-800 mt-0.5">Your organization profile has been submitted and is currently being reviewed by the JECRC Procurement Committee. You will receive access to active tenders and RFQs once approved.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Quick Action Redirect Buttons */}
               <div className="mt-6 pt-6 border-t border-gray-100 flex flex-wrap gap-3">
                 <Link
@@ -177,13 +208,23 @@ export default function MinimalWhiteVendorDashboardPage() {
                   <span>Master Profile (8 Sections)</span>
                 </Link>
                 
-                <Link
-                  href="/vendor/tenders"
-                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs shadow-sm transition-all flex items-center space-x-2"
-                >
-                  <span>⏱️</span>
-                  <span>Active BOQ Tenders & Bid Lock</span>
-                </Link>
+                {vendor.status === "APPROVED" ? (
+                  <Link
+                    href="/vendor/tenders"
+                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs shadow-sm transition-all flex items-center space-x-2"
+                  >
+                    <span>⏱️</span>
+                    <span>Active BOQ Tenders & Bid Lock</span>
+                  </Link>
+                ) : (
+                  <span
+                    className="px-4 py-2.5 bg-gray-100 text-gray-400 font-semibold rounded-lg text-xs border border-gray-200 flex items-center space-x-2 cursor-not-allowed"
+                    title="Tender bidding is unlocked after admin approval"
+                  >
+                    <span>🔒</span>
+                    <span>Active Tenders (Unlocks on Approval)</span>
+                  </span>
+                )}
 
                 <Link
                   href="/vendor/recommendations"
@@ -205,12 +246,20 @@ export default function MinimalWhiteVendorDashboardPage() {
                 </Link>
               </div>
 
-              <div className="bg-white border border-amber-200 p-5 rounded-xl space-y-2 shadow-sm">
-                <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider block">Tender Bidding</span>
-                <div className="text-2xl font-bold text-amber-700">Active BOQs</div>
-                <Link href="/vendor/tenders" className="text-xs text-amber-700 hover:underline font-bold block pt-1">
-                  Submit Bids (Time Lock) →
-                </Link>
+              <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Tender Bidding</span>
+                <div className="text-2xl font-bold text-gray-900">
+                  {vendor.status === "APPROVED" ? "Active BOQs" : "Locked 🔒"}
+                </div>
+                {vendor.status === "APPROVED" ? (
+                  <Link href="/vendor/tenders" className="text-xs text-amber-700 hover:underline font-bold block pt-1">
+                    Submit Bids (Time Lock) →
+                  </Link>
+                ) : (
+                  <span className="text-xs text-gray-400 block pt-1">
+                    Enabled after verification
+                  </span>
+                )}
               </div>
 
               <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">

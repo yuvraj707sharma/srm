@@ -108,6 +108,7 @@ async def get_my_vendor_profile(
         "years_in_business": org_with_contacts.years_in_business,
         "projects_completed_count": org_with_contacts.projects_completed_count,
         "high_value_projects_count": org_with_contacts.high_value_projects_count,
+        "high_value_projects_threshold_cr": float(org_with_contacts.high_value_projects_threshold_cr) if org_with_contacts.high_value_projects_threshold_cr is not None else 1.0,
         "has_service_base_jaipur": org_with_contacts.has_service_base_jaipur,
         "is_blacklisted": org_with_contacts.is_blacklisted,
         "pending_litigation": org_with_contacts.pending_litigation,
