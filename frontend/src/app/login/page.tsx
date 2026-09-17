@@ -357,26 +357,6 @@ export default function UnifiedAuthPage() {
                       <span>Sign In</span>
                     )}
                   </button>
-
-                  <div className="pt-3 border-t border-gray-100 space-y-1.5">
-                    <p className="text-[11px] font-semibold text-gray-500 text-center">Quick Demo Accounts:</p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setLoginEmail("admin@test.com"); setLoginPassword("password123"); setError(null); }}
-                        className="flex-1 py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-medium rounded-lg border border-slate-200 transition-colors text-center"
-                      >
-                        👑 Admin
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setLoginEmail("vendor_a@test.com"); setLoginPassword("password123"); setError(null); }}
-                        className="flex-1 py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-medium rounded-lg border border-blue-200 transition-colors text-center"
-                      >
-                        🏢 Vendor
-                      </button>
-                    </div>
-                  </div>
                 </form>
               )}
 
