@@ -377,7 +377,7 @@ Procurement & Empanelment Committee`;
       let newVerification = action === "approve" ? "VERIFIED" : "UNVERIFIED";
 
       // Actually, admin verification might have its own dedicated endpoint or we use PATCH
-      const res = await fetchApi(`/api/v1/admin/vendors/${selectedVendor.id}/verify`, {
+      const res = await fetchApi(`/api/v1/admin/vendors/${selectedVendor.id}/verify?action=${action}`, {
         method: "POST",
         body: JSON.stringify({
           action: action,
@@ -386,16 +386,18 @@ Procurement & Empanelment Committee`;
       });
 
       if (res.ok) {
-        alert(`Vendor ${action}d successfully`);
+        alert(`Vendor ${action === "approve" ? "approved" : "rejected"} successfully`);
         // Refresh detail
         loadVendorDetails(selectedVendor.id);
         loadVendors();
       } else {
-        alert(`Failed to ${action} vendor`);
+        const err = await res.json().catch(() => null);
+        const errMsg = err?.detail?.message || err?.detail || `Server returned status ${res.status}`;
+        alert(`Failed to ${action} vendor: ${errMsg}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Error verifying vendor");
+      alert(`Error verifying vendor: ${e?.message || e}`);
     } finally {
       setVerifying(false);
     }

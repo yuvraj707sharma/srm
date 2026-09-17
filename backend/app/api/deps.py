@@ -45,6 +45,8 @@ def require_permission(required_permission: str):
     """Dependency to enforce that the current user has a specific permission."""
     def permission_checker(current_user: User = Depends(get_current_user)) -> User:
         for role in current_user.roles:
+            if role.name.upper() in ("SUPERADMIN", "ADMIN", "PROCUREMENT_ADMIN"):
+                return current_user
             for perm in role.permissions:
                 if perm.name == required_permission:
                     return current_user
@@ -77,7 +79,7 @@ async def get_current_vendor_context(
 
 def require_admin_or_vendor_owner():
     """
-    Dependency allowing an admin (with 'vendors.approve' permission) OR the owner of the vendor organization to access a resource.
+    Dependency allowing an admin (with 'vendors.approve' permission or Admin role) OR the owner of the vendor organization to access a resource.
     The endpoint using this MUST accept a vendor_id in the path, e.g., `/vendors/{vendor_id}`.
     """
     async def checker(
@@ -92,6 +94,9 @@ def require_admin_or_vendor_owner():
         # Check if admin
         is_admin = False
         for role in current_user.roles:
+            if role.name.upper() in ("SUPERADMIN", "ADMIN", "PROCUREMENT_ADMIN"):
+                is_admin = True
+                break
             for perm in role.permissions:
                 if perm.name in ("vendors.approve", "vendors.read_all"):
                     is_admin = True

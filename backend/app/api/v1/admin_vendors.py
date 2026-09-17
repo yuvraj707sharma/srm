@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Path, Query, Response, Body
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional, List
 from sqlalchemy import select, desc
@@ -682,15 +683,22 @@ async def admin_save_vendor_evaluation(
     }
 
 
+class VerifyVendorRequest(BaseModel):
+    action: Optional[str] = "approve"
+    comments: Optional[str] = None
+
+
 @router.post("/{vendor_id}/verify")
 async def admin_verify_vendor(
     vendor_id: str = Path(...),
-    action: str = "approve",
+    payload: Optional[VerifyVendorRequest] = Body(None),
+    action: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_permission("vendors.approve"))
 ):
     from sqlalchemy import update
     from app.models.extraction import CatalogProductDraft
+    from app.models.user import User
 
     stmt = select(VendorOrganization).where(VendorOrganization.id == vendor_id)
     result = await db.execute(stmt)
@@ -699,23 +707,36 @@ async def admin_verify_vendor(
     if not org:
         raise APIException("NOT_FOUND", "Vendor not found.", 404)
         
-    if org.status not in ["SUBMITTED", "UNDER_REVIEW"]:
-        raise APIException("BAD_REQUEST", "Vendor must be in SUBMITTED or UNDER_REVIEW state to be verified.", 400)
+    req_action = "approve"
+    if payload and payload.action:
+        req_action = payload.action
+    elif action:
+        req_action = action
+    req_action = req_action.lower().strip()
+
+    if org.status == "SUSPENDED" and req_action == "approve":
+        raise APIException("BAD_REQUEST", "Cannot approve a suspended vendor. Please reactivate the account first.", 400)
         
-    if action == "approve":
+    if req_action == "approve":
         org.status = "APPROVED"
         org.verification_status = "VERIFIED"
+        # Auto-activate vendor user accounts so they can access their portal
+        await db.execute(
+            update(User)
+            .where(User.vendor_organization_id == vendor_id)
+            .values(is_active=True)
+        )
         # Auto-approve all catalog product drafts for this vendor
         await db.execute(
             update(CatalogProductDraft)
             .where(CatalogProductDraft.vendor_organization_id == vendor_id)
             .values(status="APPROVED")
         )
-    elif action == "reject":
+    elif req_action == "reject":
         org.status = "REJECTED"
         org.verification_status = "UNVERIFIED"
     else:
-        raise APIException("BAD_REQUEST", "Invalid action. Use 'approve' or 'reject'.", 400)
+        raise APIException("BAD_REQUEST", f"Invalid action '{req_action}'. Use 'approve' or 'reject'.", 400)
         
     await db.commit()
     return {"status": "success", "vendor_status": org.status, "verification_status": org.verification_status}
