@@ -201,35 +201,112 @@ export default function CompleteWhiteVendorProfilePage() {
     loadProfile();
   }, []);
 
-  const getSectionStatus = (sectionId: number) => {
-    const uploadedTypes = uploadedDocs.map(d => d.document_type);
-    switch (sectionId) {
-      case 1: // Identification & Tax Docs
-        return Boolean(legalName && panNumber && gstin && uploadedTypes.includes("PAN") && uploadedTypes.includes("GST"));
-      case 2: // Address & Contact
-        return Boolean(addressLine1 && city && stateProvince && postalCode && primaryContactPerson && primaryPhone && primaryEmail);
-      case 3: // Head of Org
-        return Boolean(headName && headEmail && headPhone);
-      case 4: // Bank Details & Cheque
-        return Boolean(bankName && accountNumber && ifscCode && uploadedTypes.includes("CANCELLED_CHEQUE"));
-      case 6: // Classification
-        return Boolean(supplyCategory && productServiceType && primaryBusinessType);
-      case 7: // Pre-Qualification, Turnover & Balance Sheet
-        return Boolean(
-          turnoverFy2 !== "" &&
-          yearsInBusiness !== "" &&
-          projectsCompletedCount !== "" &&
-          notDebarredDeclaration &&
-          uploadedTypes.includes("BALANCE_SHEET")
-        );
-      case 8: // Documents Overview & Supplementary
-        return true;
-      default:
-        return false;
-    }
+  const visibleSectionIds = [1, 2, 3, 4, 6, 7, 8];
+
+  const sectionTitles: Record<number, string> = {
+    1: "Section 1: Vendor Identification",
+    2: "Section 2: Contact & Address",
+    3: "Section 3: Head of Organisation",
+    4: "Section 4: Bank Details",
+    6: "Section 5: Classification",
+    7: "Section 6: Pre-Qualification & Experience",
+    8: "Section 7: Compliance Documents",
   };
 
-  const visibleSectionIds = [1, 2, 3, 4, 6, 7, 8];
+  const validateSection = (sectionId: number): string[] => {
+    const errors: string[] = [];
+    const uploadedTypes = uploadedDocs.map(d => d.document_type);
+
+    switch (sectionId) {
+      case 1: // Identification
+        if (!legalName.trim()) errors.push("Legal Name of Company");
+        if (!displayName.trim()) errors.push("Display Name");
+        if (!vendorGroup.trim()) errors.push("Vendor Group");
+        if (!vendorType.trim()) errors.push("Vendor Type");
+        if (!vendorCategory.trim()) errors.push("Vendor Category");
+        if (!panNumber.trim()) errors.push("PAN Number");
+        if (!uploadedTypes.includes("PAN")) errors.push("PAN Card Document Upload");
+        if (!gstin.trim()) errors.push("GST Number");
+        if (!uploadedTypes.includes("GST")) errors.push("GST Certificate Document Upload");
+        break;
+
+      case 2: // Contact Details & Address
+        if (!primaryContactPerson.trim()) errors.push("Primary Contact Person");
+        if (!contactDesignation.trim()) errors.push("Contact Person Designation");
+        if (!primaryPhone.trim()) errors.push("Primary Contact Mobile Number");
+        if (!primaryEmail.trim()) errors.push("Official Email");
+        if (!addressLine1.trim()) errors.push("Registered Address Line 1");
+        if (!stateProvince.trim()) errors.push("State");
+        if (!city.trim()) errors.push("City");
+        if (!postalCode.trim()) errors.push("PIN Code");
+        break;
+
+      case 3: // Head of Organisation
+        if (!headName.trim()) errors.push("Head of Organisation Name");
+        if (!headDesignation.trim()) errors.push("Head of Organisation Designation");
+        if (!headEmail.trim()) errors.push("Head of Organisation Email");
+        if (!headPhone.trim()) errors.push("Head of Organisation Phone");
+        break;
+
+      case 4: // Bank Details & Cancelled Cheque
+        if (!bankName.trim()) errors.push("Bank Name");
+        if (!branchName.trim()) errors.push("Branch Name");
+        if (!accountName.trim()) errors.push("Account Holder Name");
+        if (!accountNumber.trim()) errors.push("Account Number");
+        if (!ifscCode.trim()) errors.push("IFSC Code");
+        if (!uploadedTypes.includes("CANCELLED_CHEQUE")) errors.push("Cancelled Cheque / Bank Letter Upload");
+        break;
+
+      case 6: // Classification
+        if (!supplyCategory.trim()) errors.push("Supply Category");
+        if (!productServiceType.trim()) errors.push("Product / Service Type");
+        if (!primaryBusinessType.trim()) errors.push("Primary Business Type");
+        break;
+
+      case 7: // Pre-Qualification & Declarations
+        if (turnoverFy2 === "" || turnoverFy2 === null || turnoverFy2 === undefined) {
+          errors.push("FY 2024-25 Turnover (Audited)");
+        }
+        if (!uploadedTypes.includes("BALANCE_SHEET")) {
+          errors.push("Audited Balance Sheet for FY 2024-25 Document Upload");
+        }
+        if (hasServiceBaseJaipur && !infrastructureBaseDetails.trim()) {
+          errors.push("Jaipur / Rajasthan Infrastructure & Service Base Details");
+        }
+        if (projects && projects.length > 0) {
+          projects.forEach((proj, idx) => {
+            if (!proj.hospital_name?.trim()) {
+              errors.push(`Project #${idx + 1}: Name of Medical College / Hospital`);
+            }
+            if (!proj.bed_count) {
+              errors.push(`Project #${idx + 1}: Bed Count (> 300 Beds)`);
+            }
+            if (proj.project_cost === "" || proj.project_cost === null || proj.project_cost === undefined) {
+              errors.push(`Project #${idx + 1}: Project Cost`);
+            }
+            if (!proj.project_duration?.trim()) {
+              errors.push(`Project #${idx + 1}: Project Duration`);
+            }
+          });
+        }
+        if (!notDebarredDeclaration) {
+          errors.push("Solemn Non-Debarment Self-Declaration Checkbox");
+        }
+        break;
+
+      case 8: // Documents Overview & Supplementary
+        break;
+
+      default:
+        break;
+    }
+
+    return errors;
+  };
+
+  const getSectionStatus = (sectionId: number) => {
+    return validateSection(sectionId).length === 0;
+  };
 
   const calculateCompletion = () => {
     const completedCount = visibleSectionIds.filter(id => getSectionStatus(id)).length;
@@ -238,36 +315,48 @@ export default function CompleteWhiteVendorProfilePage() {
 
   const validatePreSubmission = () => {
     const missing: { section: number; item: string }[] = [];
-    const uploadedTypes = uploadedDocs.map(d => d.document_type);
-
-    if (!legalName.trim()) missing.push({ section: 1, item: "Legal Name of Company" });
-    if (!panNumber.trim()) missing.push({ section: 1, item: "PAN Number" });
-    if (!uploadedTypes.includes("PAN")) missing.push({ section: 1, item: "PAN Card Document Upload (Section 1)" });
-    if (!gstin.trim()) missing.push({ section: 1, item: "GST Number" });
-    if (!uploadedTypes.includes("GST")) missing.push({ section: 1, item: "GST Certificate Document Upload (Section 1)" });
-
-    if (!addressLine1.trim()) missing.push({ section: 2, item: "Address Line 1" });
-    if (!city.trim()) missing.push({ section: 2, item: "City" });
-    if (!stateProvince.trim()) missing.push({ section: 2, item: "State" });
-    if (!postalCode.trim()) missing.push({ section: 2, item: "PIN Code" });
-    if (!primaryContactPerson.trim()) missing.push({ section: 2, item: "Primary Contact Person" });
-    if (!primaryPhone.trim()) missing.push({ section: 2, item: "Primary Contact Mobile Number" });
-    if (!primaryEmail.trim()) missing.push({ section: 2, item: "Official Email" });
-
-    if (!headName.trim()) missing.push({ section: 3, item: "Head of Organisation Name" });
-    if (!headEmail.trim()) missing.push({ section: 3, item: "Head of Organisation Email" });
-    if (!headPhone.trim()) missing.push({ section: 3, item: "Head of Organisation Phone" });
-
-    if (!bankName.trim()) missing.push({ section: 4, item: "Bank Name" });
-    if (!accountNumber.trim()) missing.push({ section: 4, item: "Account Number" });
-    if (!ifscCode.trim()) missing.push({ section: 4, item: "IFSC Code" });
-    if (!uploadedTypes.includes("CANCELLED_CHEQUE")) missing.push({ section: 4, item: "Cancelled Cheque / Bank Letter Upload (Section 4)" });
-
-    if (turnoverFy2 === "") missing.push({ section: 7, item: "FY 2024-25 Turnover" });
-    if (!uploadedTypes.includes("BALANCE_SHEET")) missing.push({ section: 7, item: "Audited Balance Sheet FY 2024-25 Upload (Section 7)" });
-    if (!notDebarredDeclaration) missing.push({ section: 7, item: "Non-Debarment Self-Declaration Checkbox" });
-
+    for (const secId of visibleSectionIds) {
+      const errs = validateSection(secId);
+      for (const err of errs) {
+        missing.push({ section: secId, item: err });
+      }
+    }
     return missing;
+  };
+
+  const handleNavigateSection = async (targetSectionId: number) => {
+    const currentIdx = visibleSectionIds.indexOf(activeSection);
+    const targetIdx = visibleSectionIds.indexOf(targetSectionId);
+
+    // If moving forward to a future section:
+    if (targetIdx > currentIdx) {
+      // Validate all sections up to target to ensure no required steps are skipped
+      for (let i = 0; i < targetIdx; i++) {
+        const secId = visibleSectionIds[i];
+        const errors = validateSection(secId);
+        if (errors.length > 0) {
+          setActiveSection(secId);
+          setMsg({
+            type: "error",
+            text: `Cannot proceed to next section. Please complete all required details (*) in ${sectionTitles[secId] || `Section ${secId}`}:\n• ${errors.join("\n• ")}`
+          });
+          if (typeof window !== "undefined") {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }
+          return;
+        }
+      }
+    }
+
+    // Advance to target section (and auto-save draft if moving forward)
+    if (!isLocked && targetIdx > currentIdx) {
+      handleSaveProfile(false);
+    }
+    setActiveSection(targetSectionId);
+    setMsg(null);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleSaveProfile = async (shouldSubmit: boolean = false, e?: React.FormEvent) => {
@@ -662,7 +751,7 @@ export default function CompleteWhiteVendorProfilePage() {
                 return (
                   <button
                     key={s.id}
-                    onClick={() => setActiveSection(s.id)}
+                    onClick={() => handleNavigateSection(s.id)}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold text-left transition-all ${
                       activeSection === s.id
                         ? "bg-blue-50 text-blue-600 border border-blue-200"
@@ -1566,7 +1655,7 @@ export default function CompleteWhiteVendorProfilePage() {
                         <div>
                           <button
                             type="button"
-                            onClick={() => setActiveSection(doc.sectionId)}
+                            onClick={() => handleNavigateSection(doc.sectionId)}
                             className="text-xs text-blue-600 hover:text-blue-800 font-bold underline bg-white border border-gray-200 hover:border-blue-300 px-3 py-1 rounded-md shadow-2xs transition-all"
                           >
                             {uploaded ? "View / Replace in " + doc.sectionName.split(" ")[0] : "Go to " + doc.sectionName.split(" ")[0]}
@@ -1654,7 +1743,7 @@ export default function CompleteWhiteVendorProfilePage() {
                 <>
                   <button
                     type="button"
-                    onClick={() => prevSectionId !== null && setActiveSection(prevSectionId)}
+                    onClick={() => prevSectionId !== null && handleNavigateSection(prevSectionId)}
                     disabled={prevSectionId === null}
                     className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-lg border border-gray-300 text-xs disabled:opacity-40 transition-all shadow-sm"
                   >
@@ -1676,10 +1765,11 @@ export default function CompleteWhiteVendorProfilePage() {
                     {nextSectionId !== null ? (
                       <button
                         type="button"
-                        onClick={() => setActiveSection(nextSectionId)}
-                        className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all"
+                        onClick={() => handleNavigateSection(nextSectionId)}
+                        className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all inline-flex items-center space-x-1.5"
                       >
-                        Next Section →
+                        <span>Next Section</span>
+                        <span>→</span>
                       </button>
                     ) : !isLocked ? (
                       <button
