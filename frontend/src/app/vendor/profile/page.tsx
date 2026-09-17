@@ -645,7 +645,7 @@ export default function CompleteWhiteVendorProfilePage() {
             <div className="space-y-1 text-xs">
               {[
                 { id: 1, name: "1. Identification", icon: "📑" },
-                { id: 2, name: "2. Address & Contact", icon: "📍" },
+                { id: 2, name: "2. Contact & Address", icon: "📍" },
                 { id: 3, name: "3. Head of Organisation", icon: "👤" },
                 { id: 4, name: "4. Bank Details", icon: "💳" },
                 { id: 5, name: "5. Commercial Terms", icon: "💼" },
@@ -912,43 +912,15 @@ export default function CompleteWhiteVendorProfilePage() {
             </div>
           )}
 
-          {/* SECTION 2: ADDRESS & CONTACT */}
+          {/* SECTION 2: CONTACT & ADDRESS */}
           {activeSection === 2 && (
             <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6 shadow-sm">
               <div className="border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">Section 2: Registered Address & Contact Details</h2>
-                <p className="text-xs text-gray-500">Official company address and primary contact details (* Mandatory)</p>
+                <h2 className="text-base font-bold text-gray-900">Section 2: Contact Details & Registered Address</h2>
+                <p className="text-xs text-gray-500">Primary contact person and official company registered address (* Mandatory)</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Registered Address Line 1 <span className="text-red-600 font-bold">*</span></label>
-                  <textarea disabled={isLocked} rows={2} required value={addressLine1} onChange={e => setAddressLine1(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Plot No., Building Name, Street" />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Address Line 2</label>
-                  <textarea disabled={isLocked} rows={2} value={addressLine2} onChange={e => setAddressLine2(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Area, Locality (optional)" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Country</label>
-                  <select disabled={isLocked} value={country} onChange={e => setCountry(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                    <option value="India">India</option>
-                    <option value="USA">USA</option>
-                    <option value="Germany">Germany</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">State <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={stateProvince} onChange={e => setStateProvince(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Delhi / Rajasthan" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">City <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={city} onChange={e => setCity(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="New Delhi / Jaipur" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">PIN Code <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={postalCode} onChange={e => setPostalCode(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="6-digit PIN" />
-                </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Primary Contact Person <span className="text-red-600 font-bold">*</span></label>
                   <input type="text" disabled={isLocked} required value={primaryContactPerson} onChange={e => setPrimaryContactPerson(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Rajiv Menon" />
@@ -976,6 +948,39 @@ export default function CompleteWhiteVendorProfilePage() {
                 <div className="md:col-span-2">
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Website</label>
                   <input type="text" disabled={isLocked} value={website} onChange={e => setWebsite(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="https://www.yourcompany.com" />
+                </div>
+
+                <div className="md:col-span-2 border-t border-gray-100 pt-4 mt-2">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Registered Office Address</h3>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Registered Address Line 1 <span className="text-red-600 font-bold">*</span></label>
+                  <textarea disabled={isLocked} rows={2} required value={addressLine1} onChange={e => setAddressLine1(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Plot No., Building Name, Street" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Address Line 2</label>
+                  <textarea disabled={isLocked} rows={2} value={addressLine2} onChange={e => setAddressLine2(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Area, Locality (optional)" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Country</label>
+                  <select disabled={isLocked} value={country} onChange={e => setCountry(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
+                    <option value="India">India</option>
+                    <option value="USA">USA</option>
+                    <option value="Germany">Germany</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">State <span className="text-red-600 font-bold">*</span></label>
+                  <input type="text" disabled={isLocked} required value={stateProvince} onChange={e => setStateProvince(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Delhi / Rajasthan" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">City <span className="text-red-600 font-bold">*</span></label>
+                  <input type="text" disabled={isLocked} required value={city} onChange={e => setCity(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="New Delhi / Jaipur" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">PIN Code <span className="text-red-600 font-bold">*</span></label>
+                  <input type="text" disabled={isLocked} required value={postalCode} onChange={e => setPostalCode(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="6-digit PIN" />
                 </div>
               </div>
             </div>
