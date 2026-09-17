@@ -97,7 +97,7 @@ export default function MinimalWhiteVendorDashboardPage() {
                   </Link>
                 )}
                 <Link href="/vendor/profile" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  {vendor?.status === "APPROVED" ? "My Profile (8 Sections)" : "Vendor Registration"}
+                  {vendor?.status === "APPROVED" ? "My Profile" : "Vendor Registration"}
                 </Link>
                 {vendor?.status === "APPROVED" && (
                   <>
@@ -183,7 +183,7 @@ export default function MinimalWhiteVendorDashboardPage() {
                         <span className="text-xl">📝</span>
                         <div>
                           <h4 className="font-bold text-sm">Onboarding in Progress (Draft)</h4>
-                          <p className="text-xs text-blue-700 mt-0.5">Please complete all 8 sections of your Master Profile and submit for verification. Tenders and bidding will be enabled upon administrative approval.</p>
+                          <p className="text-xs text-blue-700 mt-0.5">Please complete your Master Profile and submit for verification. Tenders and bidding will be enabled upon administrative approval.</p>
                         </div>
                       </div>
                       <Link href="/vendor/profile" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg whitespace-nowrap self-start sm:self-auto shadow-xs">
@@ -217,7 +217,7 @@ export default function MinimalWhiteVendorDashboardPage() {
                   className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center space-x-2"
                 >
                   <span>👤</span>
-                  <span>Master Profile (8 Sections)</span>
+                  <span>Master Profile</span>
                 </Link>
                 
                 {vendor.status === "APPROVED" ? (
@@ -252,7 +252,7 @@ export default function MinimalWhiteVendorDashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Master Profile</span>
-                <div className="text-2xl font-bold text-gray-900">8 Sections</div>
+                <div className="text-2xl font-bold text-gray-900">Active Profile</div>
                 <Link href="/vendor/profile" className="text-xs text-blue-600 hover:underline font-semibold block pt-1">
                   Manage Profile & Docs →
                 </Link>
@@ -309,7 +309,7 @@ export default function MinimalWhiteVendorDashboardPage() {
                     1. Vendor Master Profile
                   </h3>
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    Complete all 8 sections: Identification, Address, Head of Org, Bank Details, Commercials, Classification, Pre-Qual, and Supporting Documents.
+                    Complete your organization profile: Identification, Address & Contact, Head of Org, Bank Details, Classification, Pre-Qualification, and Documents.
                   </p>
                   <span className="text-xs text-blue-600 font-bold block pt-1">
                     Open Profile Form →

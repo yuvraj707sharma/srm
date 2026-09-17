@@ -212,8 +212,6 @@ export default function CompleteWhiteVendorProfilePage() {
         return Boolean(headName && headEmail && headPhone);
       case 4: // Bank Details & Cheque
         return Boolean(bankName && accountNumber && ifscCode && uploadedTypes.includes("CANCELLED_CHEQUE"));
-      case 5: // Commercial Terms
-        return Boolean(paymentTerms && currency);
       case 6: // Classification
         return Boolean(supplyCategory && productServiceType && primaryBusinessType);
       case 7: // Pre-Qualification, Turnover & Balance Sheet
@@ -222,8 +220,7 @@ export default function CompleteWhiteVendorProfilePage() {
           yearsInBusiness !== "" &&
           projectsCompletedCount !== "" &&
           notDebarredDeclaration &&
-          uploadedTypes.includes("BALANCE_SHEET") &&
-          uploadedTypes.includes("NON_DEBARMENT_DECLARATION")
+          uploadedTypes.includes("BALANCE_SHEET")
         );
       case 8: // Documents Overview & Supplementary
         return true;
@@ -232,10 +229,11 @@ export default function CompleteWhiteVendorProfilePage() {
     }
   };
 
+  const visibleSectionIds = [1, 2, 3, 4, 6, 7, 8];
+
   const calculateCompletion = () => {
-    const sectionIds = [1, 2, 3, 4, 5, 6, 7, 8];
-    const completedCount = sectionIds.filter(id => getSectionStatus(id)).length;
-    return Math.round((completedCount / sectionIds.length) * 100);
+    const completedCount = visibleSectionIds.filter(id => getSectionStatus(id)).length;
+    return Math.round((completedCount / visibleSectionIds.length) * 100);
   };
 
   const validatePreSubmission = () => {
@@ -267,8 +265,7 @@ export default function CompleteWhiteVendorProfilePage() {
 
     if (turnoverFy2 === "") missing.push({ section: 7, item: "FY 2024-25 Turnover" });
     if (!uploadedTypes.includes("BALANCE_SHEET")) missing.push({ section: 7, item: "Audited Balance Sheet FY 2024-25 Upload (Section 7)" });
-    if (!notDebarredDeclaration) missing.push({ section: 7, item: "Non-Debarment Declaration Checkbox" });
-    if (!uploadedTypes.includes("NON_DEBARMENT_DECLARATION")) missing.push({ section: 7, item: "Signed Non-Debarment Declaration Upload (Section 7)" });
+    if (!notDebarredDeclaration) missing.push({ section: 7, item: "Non-Debarment Self-Declaration Checkbox" });
 
     return missing;
   };
@@ -590,7 +587,7 @@ export default function CompleteWhiteVendorProfilePage() {
                   </Link>
                 )}
                 <Link href="/vendor/profile" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                  {profile?.status === "APPROVED" ? "My Profile (8 Sections)" : "Vendor Registration"}
+                  {profile?.status === "APPROVED" ? "My Profile" : "Vendor Registration"}
                 </Link>
                 {profile?.status === "APPROVED" && (
                   <>
@@ -639,7 +636,7 @@ export default function CompleteWhiteVendorProfilePage() {
         <aside className="w-full md:w-64 bg-white border border-gray-200 rounded-xl p-4 shrink-0 flex flex-col justify-between shadow-sm">
           <div className="space-y-4">
             <div className="px-2 border-b border-gray-100 pb-3">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">8-Section Profile</span>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Master Profile</span>
             </div>
 
             <div className="space-y-1 text-xs">
@@ -648,10 +645,9 @@ export default function CompleteWhiteVendorProfilePage() {
                 { id: 2, name: "2. Contact & Address", icon: "📍" },
                 { id: 3, name: "3. Head of Organisation", icon: "👤" },
                 { id: 4, name: "4. Bank Details", icon: "💳" },
-                { id: 5, name: "5. Commercial Terms", icon: "💼" },
-                { id: 6, name: "6. Classification", icon: "🏛️" },
-                { id: 7, name: "7. Pre-Qualification", icon: "🛡️" },
-                { id: 8, name: "8. Documents", icon: "📄" },
+                { id: 6, name: "5. Classification", icon: "🏛️" },
+                { id: 7, name: "6. Pre-Qualification", icon: "🛡️" },
+                { id: 8, name: "7. Documents", icon: "📄" },
               ].map((s) => {
                 const isComplete = getSectionStatus(s.id);
                 return (
@@ -1071,76 +1067,11 @@ export default function CompleteWhiteVendorProfilePage() {
           )}
 
           {/* SECTION 5: COMMERCIAL TERMS */}
-          {activeSection === 5 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6 shadow-sm">
-              <div className="border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">Section 5: Commercial Terms</h2>
-                <p className="text-xs text-gray-500">Standard commercial terms and conditions</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Payment Terms</label>
-                  <select disabled={isLocked} value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                    <option value="Net 30 Days">Net 30 Days</option>
-                    <option value="Advance">Advance</option>
-                    <option value="On Delivery">On Delivery</option>
-                    <option value="Net 60 Days">Net 60 Days</option>
-                    <option value="Net 90 Days">Net 90 Days</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Credit Days</label>
-                  <input type="number" disabled={isLocked} value={creditDays} onChange={e => setCreditDays(e.target.value ? Number(e.target.value) : "")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="30" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Currency</label>
-                  <select disabled={isLocked} value={currency} onChange={e => setCurrency(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                    <option value="INR">INR</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Freight Terms</label>
-                  <select disabled={isLocked} value={freightTerms} onChange={e => setFreightTerms(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                    <option value="FOR Destination / Free Delivery">FOR Destination / Free Delivery</option>
-                    <option value="Ex-Works">Ex-Works</option>
-                    <option value="Freight Extra">Freight Extra</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Delivery Terms</label>
-                  <select disabled={isLocked} value={deliveryTerms} onChange={e => setDeliveryTerms(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                    <option value="Door Delivery">Door Delivery</option>
-                    <option value="Warehouse Pick-up">Warehouse Pick-up</option>
-                    <option value="Site Delivery">Site Delivery</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Price List Applicable</label>
-                  <select disabled={isLocked} value={priceListApplicable} onChange={e => setPriceListApplicable(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                    <option value="Standard Institutional">Standard Institutional</option>
-                    <option value="MRP Based">MRP Based</option>
-                    <option value="Custom Rate List">Custom Rate List</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Rate Contract Applicable</label>
-                  <select disabled={isLocked} value={rateContractApplicable ? "Yes" : "No"} onChange={e => setRateContractApplicable(e.target.value === "Yes")} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
-                    <option value="No">No</option>
-                    <option value="Yes">Yes</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 6: CLASSIFICATION */}
+          {/* SECTION 5: CLASSIFICATION (Commercial Terms hidden until shortlisting) */}
           {activeSection === 6 && (
             <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6 shadow-sm">
               <div className="border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">Section 6: Vendor Classification</h2>
+                <h2 className="text-base font-bold text-gray-900">Section 5: Vendor Classification</h2>
                 <p className="text-xs text-gray-500">Categorise your business for procurement routing</p>
               </div>
 
@@ -1211,10 +1142,11 @@ export default function CompleteWhiteVendorProfilePage() {
           )}
 
           {/* SECTION 7: PRE-QUALIFICATION */}
+          {/* SECTION 6: PRE-QUALIFICATION & DECLARATIONS */}
           {activeSection === 7 && (
             <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6 shadow-sm">
               <div className="border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">Section 7: Pre-Qualification, Turnover & Experience</h2>
+                <h2 className="text-base font-bold text-gray-900">Section 6: Pre-Qualification, Turnover & Experience</h2>
                 <p className="text-xs text-gray-500">Provide company financials, healthcare project history, infrastructure base, and compliance declarations (* Mandatory)</p>
               </div>
 
@@ -1569,26 +1501,17 @@ export default function CompleteWhiteVendorProfilePage() {
                         I/We hereby solemnly declare that our firm / company has NOT been debarred, blacklisted, or disqualified from participating in any procurement process by JECRC Foundation or any government/institutional body. <span className="text-red-600 font-bold">*</span>
                       </span>
                     </label>
-
-                    <div className="pt-2 border-t border-emerald-200">
-                      <InlineDocUploader
-                        docType="NON_DEBARMENT_DECLARATION"
-                        label="Signed Non-Debarment Declaration / Affidavit"
-                        required={true}
-                        description="Upload signed and stamped Non-Debarment Affidavit or Declaration on company letterhead (PDF)"
-                      />
-                    </div>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* SECTION 8: DOCUMENTS OVERVIEW & SUPPLEMENTARY FILES */}
+          {/* SECTION 7: DOCUMENTS OVERVIEW & SUPPLEMENTARY FILES */}
           {activeSection === 8 && (
             <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6 shadow-sm">
               <div className="border-b border-gray-100 pb-3">
-                <h2 className="text-base font-bold text-gray-900">Section 8: Compliance Verification & Supplementary Documents</h2>
+                <h2 className="text-base font-bold text-gray-900">Section 7: Compliance Verification & Supplementary Documents</h2>
                 <p className="text-xs text-gray-500">
                   Mandatory compliance documents are uploaded directly within their respective sections. Use this section to review compliance status and attach additional catalog or quality documents.
                 </p>
@@ -1603,7 +1526,7 @@ export default function CompleteWhiteVendorProfilePage() {
                       Mandatory Compliance Documents Summary
                     </h3>
                   </div>
-                  <span className="text-[11px] text-gray-500">Uploaded in Sections 1, 4 & 7</span>
+                  <span className="text-[11px] text-gray-500">Uploaded in Sections 1, 4 & 6</span>
                 </div>
 
                 <div className="divide-y divide-gray-200 text-xs">
@@ -1611,8 +1534,7 @@ export default function CompleteWhiteVendorProfilePage() {
                     { key: "PAN", label: "PAN Card Document Copy", sectionId: 1, sectionName: "Section 1 (Identification)" },
                     { key: "GST", label: "GST Registration Certificate", sectionId: 1, sectionName: "Section 1 (Identification)" },
                     { key: "CANCELLED_CHEQUE", label: "Cancelled Cheque / Bank Letter", sectionId: 4, sectionName: "Section 4 (Bank Details)" },
-                    { key: "BALANCE_SHEET", label: "Audited Balance Sheet FY 2024-25", sectionId: 7, sectionName: "Section 7 (Pre-Qualification)" },
-                    { key: "NON_DEBARMENT_DECLARATION", label: "Signed Non-Debarment Declaration", sectionId: 7, sectionName: "Section 7 (Pre-Qualification)" },
+                    { key: "BALANCE_SHEET", label: "Audited Balance Sheet FY 2024-25", sectionId: 7, sectionName: "Section 6 (Pre-Qualification)" },
                     ...(msmeRegistered ? [{ key: "MSME", label: "MSME / Udyam Certificate", sectionId: 1, sectionName: "Section 1 (Identification)" }] : [])
                   ].map(doc => {
                     const uploaded = uploadedDocs.find(d => d.document_type === doc.key);
@@ -1714,50 +1636,60 @@ export default function CompleteWhiteVendorProfilePage() {
 
           {/* Bottom Form Navigation Buttons */}
           <div className="flex justify-between items-center border-t border-gray-200 pt-4">
-            <button
-              type="button"
-              onClick={() => setActiveSection(Math.max(1, activeSection - 1))}
-              disabled={activeSection === 1}
-              className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-lg border border-gray-300 text-xs disabled:opacity-40 transition-all shadow-sm"
-            >
-              ← Previous Section
-            </button>
+            {(() => {
+              const currentIdx = visibleSectionIds.indexOf(activeSection);
+              const prevSectionId = currentIdx > 0 ? visibleSectionIds[currentIdx - 1] : null;
+              const nextSectionId = currentIdx < visibleSectionIds.length - 1 ? visibleSectionIds[currentIdx + 1] : null;
 
-            <div className="space-x-2">
-              {!isLocked && (
-                <button
-                  type="button"
-                  onClick={() => handleSaveProfile(false)}
-                  disabled={saving}
-                  className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-lg border border-gray-300 text-xs transition-all shadow-sm"
-                >
-                  {saving ? "Saving..." : "Save Draft"}
-                </button>
-              )}
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => prevSectionId !== null && setActiveSection(prevSectionId)}
+                    disabled={prevSectionId === null}
+                    className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-lg border border-gray-300 text-xs disabled:opacity-40 transition-all shadow-sm"
+                  >
+                    ← Previous Section
+                  </button>
 
-              {activeSection < 8 ? (
-                <button
-                  type="button"
-                  onClick={() => setActiveSection(activeSection + 1)}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all"
-                >
-                  Next Section →
-                </button>
-              ) : !isLocked ? (
-                <button
-                  type="button"
-                  onClick={() => handleSaveProfile(true)}
-                  disabled={saving}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all font-bold"
-                >
-                  Submit Complete Profile
-                </button>
-              ) : (
-                <span className="px-4 py-2 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs border border-amber-300">
-                  🔒 Locked ({profile?.status})
-                </span>
-              )}
-            </div>
+                  <div className="space-x-2">
+                    {!isLocked && (
+                      <button
+                        type="button"
+                        onClick={() => handleSaveProfile(false)}
+                        disabled={saving}
+                        className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-lg border border-gray-300 text-xs transition-all shadow-sm"
+                      >
+                        {saving ? "Saving..." : "Save Draft"}
+                      </button>
+                    )}
+
+                    {nextSectionId !== null ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection(nextSectionId)}
+                        className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all"
+                      >
+                        Next Section →
+                      </button>
+                    ) : !isLocked ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSaveProfile(true)}
+                        disabled={saving}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all font-bold"
+                      >
+                        Submit Complete Profile
+                      </button>
+                    ) : (
+                      <span className="px-4 py-2 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs border border-amber-300">
+                        🔒 Locked ({profile?.status})
+                      </span>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
         </main>

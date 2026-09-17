@@ -102,7 +102,7 @@ export default function MinimalWhiteVendorRecommendationsPage() {
                   </Link>
                 )}
                 <Link href="/vendor/profile" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  {profile?.status === "APPROVED" ? "My Profile (8 Sections)" : "Vendor Registration"}
+                  {profile?.status === "APPROVED" ? "My Profile" : "Vendor Registration"}
                 </Link>
                 {profile?.status === "APPROVED" && (
                   <>
