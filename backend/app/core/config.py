@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"
     MAX_LOGIN_ATTEMPTS: int = 5
     ACCOUNT_LOCKOUT_MINUTES: int = 15
-    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB default
+    MAX_UPLOAD_SIZE_BYTES: int = 7 * 1024 * 1024  # 7 MB default
     
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: Optional[int] = None

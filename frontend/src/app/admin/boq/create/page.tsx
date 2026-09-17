@@ -84,8 +84,14 @@ export default function CreateUniversalBOQPage() {
     loadVendors();
   }, []);
 
+  const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
+
   // OPTION 1: Direct File Upload for Vendors (PDF, Excel, Word DOC/DOCX)
   const handleDirectUpload = async (selectedFile: File) => {
+    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File "${selectedFile.name}" (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed limit of 7 MB.`);
+      return;
+    }
     setFile(selectedFile);
     setError(null);
     setUploading(true);
@@ -141,6 +147,10 @@ export default function CreateUniversalBOQPage() {
 
   // OPTION 2: AI Automated Extraction (Gemini AI parsing table & custom columns)
   const handleAIExtract = async (selectedFile: File) => {
+    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File "${selectedFile.name}" (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed limit of 7 MB.`);
+      return;
+    }
     setFile(selectedFile);
     setError(null);
     setUploading(true);
@@ -188,6 +198,10 @@ export default function CreateUniversalBOQPage() {
 
   // OPTION 3 (ZERO MANUAL FORM): 1-Click Formless AI Upload & Publish
   const handleFormlessPublish = async (selectedFile: File, publishNow: boolean = true) => {
+    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File "${selectedFile.name}" (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed limit of 7 MB.`);
+      return;
+    }
     setFile(selectedFile);
     setError(null);
     setUploading(true);

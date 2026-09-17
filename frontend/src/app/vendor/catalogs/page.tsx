@@ -77,6 +77,16 @@ export default function MinimalWhiteVendorCatalogsPage() {
       setMsg({ type: "error", text: "Please select a PDF catalog file to upload." });
       return;
     }
+
+    const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setMsg({
+        type: "error",
+        text: `Catalog PDF "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed size of 7 MB. Please select or compress a file smaller than 7 MB.`
+      });
+      return;
+    }
+
     if (!title) {
       setMsg({ type: "error", text: "Please enter a catalog title." });
       return;
@@ -283,7 +293,7 @@ export default function MinimalWhiteVendorCatalogsPage() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Select Catalog PDF File *</label>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Select Catalog PDF File (Max 7 MB) *</label>
                 <input
                   type="file"
                   required

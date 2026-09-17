@@ -43,7 +43,7 @@ class DocumentService:
         file_size = len(file_bytes)
         
         if file_size > settings.MAX_UPLOAD_SIZE_BYTES:
-            raise APIException("FILE_TOO_LARGE", f"File exceeds maximum size of {settings.MAX_UPLOAD_SIZE_BYTES} bytes.", 400)
+            raise APIException("FILE_TOO_LARGE", f"File exceeds maximum allowed size of 7 MB ({settings.MAX_UPLOAD_SIZE_BYTES} bytes).", 400)
             
         if file_size == 0:
             raise APIException("BAD_REQUEST", "File cannot be empty.", 400)

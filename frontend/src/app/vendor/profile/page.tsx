@@ -407,9 +407,18 @@ export default function CompleteWhiteVendorProfilePage() {
     }
   };
 
+  const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
+
   const handleDocumentUpload = async (docType: string, file: File) => {
     if (isLocked) {
       setMsg({ type: "error", text: "Profile is locked after submission. Document uploads are disabled." });
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setMsg({
+        type: "error",
+        text: `File "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed size of 7 MB. Please select or compress a document smaller than 7 MB.`
+      });
       return;
     }
     const formData = new FormData();

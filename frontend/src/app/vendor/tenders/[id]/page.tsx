@@ -227,6 +227,12 @@ export default function VendorTenderBiddingPage() {
 
   // Submit via File Upload (Excel or PDF)
   const handleFileUploadSubmit = async (selectedFile: File) => {
+    const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
+    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File "${selectedFile.name}" (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed limit of 7 MB.`);
+      return;
+    }
+
     setUploading(true);
     setError(null);
     try {

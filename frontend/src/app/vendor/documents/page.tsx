@@ -74,6 +74,15 @@ export default function MinimalWhiteVendorDocumentsPage() {
       return;
     }
 
+    const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
+    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+      setMsg({
+        type: "error",
+        text: `File "${selectedFile.name}" (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed size of 7 MB.`
+      });
+      return;
+    }
+
     setUploading(true);
     setMsg(null);
 
@@ -237,7 +246,7 @@ export default function MinimalWhiteVendorDocumentsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Select File (PDF, PNG, JPG) *</label>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Select File (PDF, PNG, JPG — Max 7 MB) *</label>
                 <input
                   type="file"
                   required
