@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fetchApi } from "../../../../lib/api/client";
 
 interface VendorTender {
@@ -23,6 +24,7 @@ interface VendorTender {
 }
 
 export default function VendorTendersPage() {
+  const router = useRouter();
   const [tenders, setTenders] = useState<VendorTender[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,6 +45,14 @@ export default function VendorTendersPage() {
   async function loadTenders() {
     try {
       setLoading(true);
+      const profRes = await fetchApi("/api/v1/vendor/me");
+      if (profRes.ok) {
+        const prof = await profRes.json();
+        if (prof.status !== "APPROVED") {
+          router.push("/vendor/profile");
+          return;
+        }
+      }
       const res = await fetchApi("/api/v1/vendor/tenders");
       if (res.ok) {
         setTenders(await res.json());

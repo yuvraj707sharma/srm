@@ -575,7 +575,7 @@ export default function CompleteWhiteVendorProfilePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-6">
-              <Link href="/vendor/dashboard" className="flex items-center space-x-2.5">
+              <Link href={profile?.status === "APPROVED" ? "/vendor/dashboard" : "/vendor/profile"} className="flex items-center space-x-2.5">
                 <div className="bg-blue-600 text-white font-bold text-lg px-2.5 py-1 rounded-lg">J</div>
                 <div>
                   <span className="font-bold text-gray-900 tracking-tight text-base block">JECRC SCM</span>
@@ -584,31 +584,47 @@ export default function CompleteWhiteVendorProfilePage() {
               </Link>
 
               <div className="hidden md:flex space-x-1 pl-4 border-l border-gray-200 text-xs font-semibold">
-                <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Dashboard
-                </Link>
+                {profile?.status === "APPROVED" && (
+                  <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                    Dashboard
+                  </Link>
+                )}
                 <Link href="/vendor/profile" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                  My Profile (8 Sections)
+                  {profile?.status === "APPROVED" ? "My Profile (8 Sections)" : "Vendor Registration"}
                 </Link>
-                <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  BOQ Submissions
-                </Link>
-                <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  My Proposals
-                </Link>
-                <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Documents
-                </Link>
-                <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Product Catalogs (AI)
-                </Link>
+                {profile?.status === "APPROVED" && (
+                  <>
+                    <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      BOQ Submissions
+                    </Link>
+                    <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      My Proposals
+                    </Link>
+                    <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      Documents
+                    </Link>
+                    <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      Product Catalogs (AI)
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
 
             <div className="flex items-center space-x-3">
+              {profile?.status !== "APPROVED" && (
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                  profile?.status === "REJECTED" ? "bg-red-100 text-red-800 border border-red-200" :
+                  profile?.status === "SUBMITTED" || profile?.status === "UNDER_REVIEW" ? "bg-amber-100 text-amber-800 border border-amber-200" :
+                  "bg-blue-100 text-blue-800 border border-blue-200"
+                }`}>
+                  {profile?.status === "SUBMITTED" || profile?.status === "UNDER_REVIEW" ? "⏳ Under Admin Review" :
+                   profile?.status === "REJECTED" ? "❌ Action Required" : "📝 Registration (Draft)"}
+                </span>
+              )}
               <button
                 onClick={logout}
-                className="text-xs text-red-600 hover:text-red-700 font-semibold bg-red-50 border border-red-200 px-3.5 py-2 rounded-lg transition-all"
+                className="text-xs text-red-600 hover:text-red-700 font-semibold bg-red-50 border border-red-200 px-3.5 py-2 rounded-lg transition-all cursor-pointer"
               >
                 Sign Out
               </button>
@@ -817,12 +833,19 @@ export default function CompleteWhiteVendorProfilePage() {
                   <input type="text" disabled={isLocked} required value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="ABC Medical Systems" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Short Name / Abbreviation</label>
-                  <input type="text" disabled={isLocked} value={shortName} onChange={e => setShortName(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="ABC" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Vendor Group</label>
-                  <input type="text" disabled={isLocked} value={vendorGroup} onChange={e => setVendorGroup(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="OEM / Dealer / Distributor" />
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Vendor Group <span className="text-red-600 font-bold">*</span></label>
+                  <select
+                    disabled={isLocked}
+                    value={vendorGroup}
+                    onChange={e => setVendorGroup(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500"
+                  >
+                    <option value="OEM">OEM</option>
+                    <option value="Supplier">Supplier</option>
+                    <option value="Distributor">Distributor</option>
+                    <option value="Retailer">Retailer</option>
+                    <option value="Wholesale">Wholesale</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Vendor Type <span className="text-red-600 font-bold">*</span></label>
@@ -835,11 +858,14 @@ export default function CompleteWhiteVendorProfilePage() {
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Vendor Category <span className="text-red-600 font-bold">*</span></label>
                   <select disabled={isLocked} value={vendorCategory} onChange={e => setVendorCategory(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500">
+                    <option value="Medical Consumer">Medical Consumer</option>
+                    <option value="Pharmaceutical">Pharmaceutical</option>
+                    <option value="IT Hardware">IT Hardware</option>
+                    <option value="General Supplies">General Supplies</option>
+                    <option value="Facilities Management">Facilities Management</option>
                     <option value="Medical Devices">Medical Devices</option>
                     <option value="Consumables">Consumables</option>
-                    <option value="IT Hardware">IT Hardware</option>
                     <option value="Civil & Engineering">Civil & Engineering</option>
-                    <option value="General Supplies">General Supplies</option>
                   </select>
                 </div>
                 <div>

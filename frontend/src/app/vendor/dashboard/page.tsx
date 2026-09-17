@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fetchApi } from "../../../../lib/api/client";
 import { useAuth } from "../../../../lib/auth/AuthContext";
 
@@ -19,6 +20,7 @@ interface VendorProfile {
 }
 
 export default function MinimalWhiteVendorDashboardPage() {
+  const router = useRouter();
   const [vendor, setVendor] = useState<VendorProfile | null>(null);
   const [docCount, setDocCount] = useState<number>(0);
   const [catalogCount, setCatalogCount] = useState<number>(0);
@@ -34,6 +36,10 @@ export default function MinimalWhiteVendorDashboardPage() {
         if (profRes.ok) {
           const profData = await profRes.json();
           setVendor(profData);
+          if (profData.status !== "APPROVED") {
+            router.push("/vendor/profile");
+            return;
+          }
         } else {
           setError("Failed to load vendor profile.");
         }
@@ -85,25 +91,31 @@ export default function MinimalWhiteVendorDashboardPage() {
               </Link>
 
               <div className="hidden md:flex space-x-1 pl-4 border-l border-gray-200 text-xs font-semibold">
-                <Link href="/vendor/dashboard" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                  Dashboard
-                </Link>
+                {vendor?.status === "APPROVED" && (
+                  <Link href="/vendor/dashboard" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
+                    Dashboard
+                  </Link>
+                )}
                 <Link href="/vendor/profile" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  My Profile (8 Sections)
+                  {vendor?.status === "APPROVED" ? "My Profile (8 Sections)" : "Vendor Registration"}
                 </Link>
-                <Link href="/vendor/tenders" className="text-blue-600 font-bold hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors flex items-center space-x-1">
-                  <span>⏱️</span>
-                  <span>Active Tenders & BOQs</span>
-                </Link>
-                <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  My Proposals
-                </Link>
-                <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Documents
-                </Link>
-                <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Product Catalogs (AI)
-                </Link>
+                {vendor?.status === "APPROVED" && (
+                  <>
+                    <Link href="/vendor/tenders" className="text-blue-600 font-bold hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors flex items-center space-x-1">
+                      <span>⏱️</span>
+                      <span>Active Tenders &amp; BOQs</span>
+                    </Link>
+                    <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      My Proposals
+                    </Link>
+                    <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      Documents
+                    </Link>
+                    <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      Product Catalogs (AI)
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
 

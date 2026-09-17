@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fetchApi } from "../../../../lib/api/client";
 import { useAuth } from "../../../../lib/auth/AuthContext";
 
@@ -23,6 +24,7 @@ interface DocumentItem {
 }
 
 export default function MinimalWhiteVendorDocumentsPage() {
+  const router = useRouter();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +45,12 @@ export default function MinimalWhiteVendorDocumentsPage() {
       }
       const profRes = await fetchApi("/api/v1/vendor/me");
       if (profRes.ok) {
-        setProfile(await profRes.json());
+        const prof = await profRes.json();
+        setProfile(prof);
+        if (prof.status !== "APPROVED") {
+          router.push("/vendor/profile");
+          return;
+        }
       }
     } catch (err) {
       setMsg({ type: "error", text: "Error loading documents." });
@@ -111,24 +118,30 @@ export default function MinimalWhiteVendorDocumentsPage() {
               </Link>
 
               <div className="hidden md:flex space-x-1 pl-4 border-l border-gray-200 text-xs font-semibold">
-                <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Dashboard
-                </Link>
+                {profile?.status === "APPROVED" && (
+                  <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                    Dashboard
+                  </Link>
+                )}
                 <Link href="/vendor/profile" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  My Profile (8 Sections)
+                  {profile?.status === "APPROVED" ? "My Profile (8 Sections)" : "Vendor Registration"}
                 </Link>
-                <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  BOQ Submissions
-                </Link>
-                <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  My Proposals
-                </Link>
-                <Link href="/vendor/documents" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                  Documents
-                </Link>
-                <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Product Catalogs (AI)
-                </Link>
+                {profile?.status === "APPROVED" && (
+                  <>
+                    <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      BOQ Submissions
+                    </Link>
+                    <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      My Proposals
+                    </Link>
+                    <Link href="/vendor/documents" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
+                      Documents
+                    </Link>
+                    <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      Product Catalogs (AI)
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
 

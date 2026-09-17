@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fetchApi } from "../../../../lib/api/client";
 import { useAuth } from "../../../../lib/auth/AuthContext";
 
@@ -16,8 +17,10 @@ interface CatalogItem {
 }
 
 export default function MinimalWhiteVendorCatalogsPage() {
+  const router = useRouter();
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<Record<string, any[]>>({});
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -32,6 +35,15 @@ export default function MinimalWhiteVendorCatalogsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
+      const profRes = await fetchApi("/api/v1/vendor/me");
+      if (profRes.ok) {
+        const prof = await profRes.json();
+        setProfile(prof);
+        if (prof.status !== "APPROVED") {
+          router.push("/vendor/profile");
+          return;
+        }
+      }
       const res = await fetchApi("/api/v1/vendor/catalogs");
       if (res.ok) {
         const catData: CatalogItem[] = await res.json();
@@ -147,7 +159,7 @@ export default function MinimalWhiteVendorCatalogsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-6">
-              <Link href="/vendor/dashboard" className="flex items-center space-x-2.5">
+              <Link href={profile?.status === "APPROVED" ? "/vendor/dashboard" : "/vendor/profile"} className="flex items-center space-x-2.5">
                 <div className="bg-blue-600 text-white font-bold text-lg px-2.5 py-1 rounded-lg">J</div>
                 <div>
                   <span className="font-bold text-gray-900 tracking-tight text-base block">JECRC SCM</span>
@@ -156,24 +168,30 @@ export default function MinimalWhiteVendorCatalogsPage() {
               </Link>
 
               <div className="hidden md:flex space-x-1 pl-4 border-l border-gray-200 text-xs font-semibold">
-                <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Dashboard
-                </Link>
+                {profile?.status === "APPROVED" && (
+                  <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                    Dashboard
+                  </Link>
+                )}
                 <Link href="/vendor/profile" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  My Profile (8 Sections)
+                  {profile?.status === "APPROVED" ? "My Profile (8 Sections)" : "Vendor Registration"}
                 </Link>
-                <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  BOQ Submissions
-                </Link>
-                <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  My Proposals
-                </Link>
-                <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  Documents
-                </Link>
-                <Link href="/vendor/catalogs" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                  Product Catalogs (AI)
-                </Link>
+                {profile?.status === "APPROVED" && (
+                  <>
+                    <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      BOQ Submissions
+                    </Link>
+                    <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      My Proposals
+                    </Link>
+                    <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
+                      Documents
+                    </Link>
+                    <Link href="/vendor/catalogs" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
+                      Product Catalogs (AI)
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
 
