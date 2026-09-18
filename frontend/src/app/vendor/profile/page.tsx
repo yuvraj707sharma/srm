@@ -97,7 +97,7 @@ export default function CompleteWhiteVendorProfilePage() {
   // Section 8: Documents
   const [uploadedDocs, setUploadedDocs] = useState<any[]>([]);
 
-  const isLocked = Boolean(profile && ["SUBMITTED", "UNDER_REVIEW", "APPROVED"].includes(profile.status));
+  const isLocked = Boolean(profile && ["SUBMITTED", "UNDER_REVIEW"].includes(profile.status));
 
   async function loadProfile() {
     try {
@@ -362,7 +362,7 @@ export default function CompleteWhiteVendorProfilePage() {
   const handleSaveProfile = async (shouldSubmit: boolean = false, e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (isLocked) {
-      setMsg({ type: "error", text: "Profile is locked after submission and cannot be edited." });
+      setMsg({ type: "error", text: "Profile is currently under review and cannot be edited." });
       return;
     }
 
@@ -474,16 +474,21 @@ export default function CompleteWhiteVendorProfilePage() {
 
       if (res.ok) {
         if (shouldSubmit) {
-          const submitRes = await fetchApi("/api/v1/vendor/me/submit", { method: "POST" });
-          if (submitRes.ok) {
-            setMsg({ type: "success", text: "🔒 Vendor Master Profile submitted successfully for review! Your profile is now locked." });
+          if (profile?.status === "APPROVED") {
+            setMsg({ type: "success", text: "✓ Vendor Master Profile updated and completed successfully!" });
             await loadProfile();
           } else {
-            const err = await submitRes.json();
-            setMsg({ type: "error", text: err.detail?.message || err.detail || "Profile saved, but submission failed." });
+            const submitRes = await fetchApi("/api/v1/vendor/me/submit", { method: "POST" });
+            if (submitRes.ok) {
+              setMsg({ type: "success", text: "🔒 Vendor Master Profile submitted successfully for review! Your profile is now under review." });
+              await loadProfile();
+            } else {
+              const err = await submitRes.json();
+              setMsg({ type: "error", text: err.detail?.message || err.detail || "Profile saved, but submission failed." });
+            }
           }
         } else {
-          setMsg({ type: "success", text: "Vendor profile draft saved successfully!" });
+          setMsg({ type: "success", text: profile?.status === "APPROVED" ? "✓ Profile changes saved successfully!" : "Vendor profile draft saved successfully!" });
         }
       } else {
         const err = await res.json();
@@ -500,7 +505,7 @@ export default function CompleteWhiteVendorProfilePage() {
 
   const handleDocumentUpload = async (docType: string, file: File) => {
     if (isLocked) {
-      setMsg({ type: "error", text: "Profile is locked after submission. Document uploads are disabled." });
+      setMsg({ type: "error", text: "Profile is currently under review. Document uploads are disabled until review completes." });
       return;
     }
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -777,12 +782,12 @@ export default function CompleteWhiteVendorProfilePage() {
 
           <div className="pt-4 border-t border-gray-100">
             <button
-              onClick={() => handleSaveProfile()}
+              onClick={() => handleSaveProfile(false)}
               disabled={saving || isLocked}
               className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs shadow-sm transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>{isLocked ? "🔒" : "💾"}</span>
-              <span>{isLocked ? "Profile Locked" : saving ? "Saving..." : "Save Profile Draft"}</span>
+              <span>{isLocked ? "Profile Under Review" : saving ? "Saving..." : profile?.status === "APPROVED" ? "Save Changes" : "Save Profile Draft"}</span>
             </button>
           </div>
         </aside>
@@ -798,7 +803,7 @@ export default function CompleteWhiteVendorProfilePage() {
                 <div>
                   <h3 className="font-bold text-sm">Vendor Profile Verified & Approved</h3>
                   <p className="text-xs text-emerald-800 mt-0.5">
-                    Your vendor organization has been verified and approved by JECRC Procurement Admin. Profile data is locked.
+                    Your vendor organization has been verified and approved by JECRC Procurement Admin. You can review, complete, or update your profile details and documents below.
                   </p>
                 </div>
               </div>
@@ -1760,7 +1765,7 @@ export default function CompleteWhiteVendorProfilePage() {
                         disabled={saving}
                         className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-lg border border-gray-300 text-xs transition-all shadow-sm"
                       >
-                        {saving ? "Saving..." : "Save Draft"}
+                        {saving ? "Saving..." : profile?.status === "APPROVED" ? "Save Changes" : "Save Draft"}
                       </button>
                     )}
 
@@ -1780,11 +1785,11 @@ export default function CompleteWhiteVendorProfilePage() {
                         disabled={saving}
                         className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all font-bold"
                       >
-                        Submit Complete Profile
+                        {profile?.status === "APPROVED" ? "Save & Update Profile" : "Submit Complete Profile"}
                       </button>
                     ) : (
                       <span className="px-4 py-2 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs border border-amber-300">
-                        🔒 Locked ({profile?.status})
+                        🔒 Under Review ({profile?.status})
                       </span>
                     )}
                   </div>

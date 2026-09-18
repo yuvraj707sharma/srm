@@ -162,8 +162,8 @@ async def update_my_vendor_profile(
     org: VendorOrganization = Depends(get_current_vendor_context),
     vendor_service: VendorService = Depends(get_vendor_service)
 ):
-    if org.status not in ["DRAFT", "REJECTED"]:
-        raise APIException("FORBIDDEN", f"Profile is locked in '{org.status}' status and cannot be edited. Edits are disabled while under review or after approval.", 403)
+    if org.status in ["SUBMITTED", "UNDER_REVIEW"]:
+        raise APIException("FORBIDDEN", f"Profile is currently under review ('{org.status}') and cannot be edited until reviewed.", 403)
         
     if "bank_details" in data:
         await vendor_service.upsert_bank_details(org.id, data.pop("bank_details"))
@@ -224,8 +224,8 @@ async def upload_document(
     org: VendorOrganization = Depends(get_current_vendor_context),
     doc_service: DocumentService = Depends(get_document_service)
 ):
-    if org.status not in ["DRAFT", "REJECTED"] and document_type != "PRODUCT_CATALOG":
-        raise APIException("FORBIDDEN", f"Profile is currently in '{org.status}' status. Document uploads are locked until review is completed.", 403)
+    if org.status in ["SUBMITTED", "UNDER_REVIEW"] and document_type != "PRODUCT_CATALOG":
+        raise APIException("FORBIDDEN", f"Profile is currently under review ('{org.status}'). Document uploads are locked until review is completed.", 403)
 
     doc_version = await doc_service.upload_document(
         vendor_organization_id=org.id,

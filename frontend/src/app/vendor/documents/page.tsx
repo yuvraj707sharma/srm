@@ -34,7 +34,7 @@ export default function MinimalWhiteVendorDocumentsPage() {
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const { logout } = useAuth();
 
-  const isLocked = Boolean(profile && ["SUBMITTED", "UNDER_REVIEW", "APPROVED"].includes(profile.status));
+  const isLocked = Boolean(profile && ["SUBMITTED", "UNDER_REVIEW"].includes(profile.status));
 
   const loadDocs = async () => {
     try {
@@ -66,7 +66,7 @@ export default function MinimalWhiteVendorDocumentsPage() {
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLocked && selectedDocType !== "PRODUCT_CATALOG") {
-      setMsg({ type: "error", text: "Compliance document uploads are locked while profile is under review or approved." });
+      setMsg({ type: "error", text: "Compliance document uploads are locked while profile is under review." });
       return;
     }
     if (!selectedFile) {
@@ -186,7 +186,7 @@ export default function MinimalWhiteVendorDocumentsPage() {
               <div>
                 <h3 className="font-bold text-sm">Compliance Documents Approved</h3>
                 <p className="text-xs text-emerald-800 mt-0.5">
-                  Your vendor organization has been verified and approved by JECRC Procurement Admin. Compliance document updates are locked.
+                  Your vendor organization has been verified and approved by JECRC Procurement Admin. You can continue uploading renewed certificates or catalog updates below.
                 </p>
               </div>
             </div>
