@@ -119,10 +119,12 @@ export default function MinimalWhiteVendorDocumentsPage() {
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-6">
               <Link href="/vendor/dashboard" className="flex items-center space-x-2.5">
-                <div className="bg-blue-600 text-white font-bold text-lg px-2.5 py-1 rounded-lg">J</div>
-                <div>
-                  <span className="font-bold text-gray-900 tracking-tight text-base block">JECRC SCM</span>
-                  <span className="text-[10px] text-gray-500 block -mt-1">Vendor Portal</span>
+                <div className="bg-blue-600 text-white font-bold text-lg px-2.5 py-1 rounded-lg shrink-0">J</div>
+                <div className="min-w-0">
+                  <span className="font-bold text-gray-900 tracking-tight text-xs sm:text-sm block leading-tight">
+                    JECRC Medical College Hospital &amp; Research Centre
+                  </span>
+                  <span className="text-[10px] text-gray-500 block font-medium">A Unit of JECRC • Vendor Portal</span>
                 </div>
               </Link>
 

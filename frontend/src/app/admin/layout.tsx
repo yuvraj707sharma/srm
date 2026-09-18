@@ -90,9 +90,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <div>
-              <span className="text-white font-bold text-base tracking-tight block">JECRC Tender</span>
-              <span className="text-[10px] uppercase tracking-widest text-blue-400 font-semibold block -mt-1">Admin Console</span>
+            <div className="min-w-0">
+              <span className="text-white font-bold text-xs leading-tight tracking-tight block">JECRC Medical College Hospital &amp; Research Centre</span>
+              <span className="text-[10px] text-blue-400 font-semibold block">A Unit of JECRC • Admin Console</span>
             </div>
           </div>
         </div>

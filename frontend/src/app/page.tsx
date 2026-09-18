@@ -22,7 +22,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-gray-500">Loading JECRC SCM...</div>
+      <div className="text-gray-500 font-medium text-sm">Loading JECRC Medical College Hospital &amp; Research Centre...</div>
     </div>
   );
 }

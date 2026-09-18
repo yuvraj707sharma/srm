@@ -184,15 +184,18 @@ export default function UnifiedAuthPage() {
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
       
       {/* Brand Header */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-6">
+      <div className="sm:mx-auto sm:w-full sm:max-w-lg text-center mb-6">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 shadow-sm mb-3">
           <span className="text-2xl font-black text-white">J</span>
         </div>
-        <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-          JECRC SCM Portal
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 leading-snug">
+          JECRC Medical College Hospital and Research Centre
         </h2>
-        <p className="mt-1 text-xs text-gray-500">
-          Unified Procurement & Vendor Gateway
+        <p className="mt-1 text-xs font-semibold text-blue-600 tracking-wide uppercase">
+          A Unit of JECRC
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Unified Procurement &amp; Vendor Portal
         </p>
       </div>
 
@@ -222,7 +225,7 @@ export default function UnifiedAuthPage() {
                     : "text-gray-600 hover:text-gray-900"
                 }`}
               >
-                Vendor Sign Up
+                Register
               </button>
             </div>
           )}
@@ -309,7 +312,7 @@ export default function UnifiedAuthPage() {
                   onClick={() => { setOtpSent(false); setMode("register"); setError(null); }}
                   className="text-gray-500 hover:text-gray-700"
                 >
-                  ← Back to Sign Up
+                  ← Back to Register
                 </button>
               </div>
             </form>
@@ -367,7 +370,7 @@ export default function UnifiedAuthPage() {
                     <div className="font-bold flex items-center gap-1.5 text-blue-950 mb-1">
                       <span>📩</span> Received an Empanelment Email?
                     </div>
-                    Sign up with your official work email. After email OTP verification, you will fill out the 5 pre-qualification evaluation criteria (Projects &gt;300 beds, 3-year turnover, high-value projects, Rajasthan service base, and FY 2024-25 balance sheet) for committee scoring.
+                    Register with your official work email. After email OTP verification, you will fill out the 5 pre-qualification evaluation criteria (Projects &gt;300 beds, 3-year turnover, high-value projects, Rajasthan service base, and FY 2024-25 balance sheet) for committee scoring.
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">

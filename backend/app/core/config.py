@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "JECRC SCM API"
+    PROJECT_NAME: str = "JECRC Medical College Hospital and Research Centre (A Unit of JECRC)"
     API_V1_STR: str = "/api/v1"
     
     DATABASE_URL: str

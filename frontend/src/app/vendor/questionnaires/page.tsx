@@ -190,7 +190,7 @@ export default function VendorQuestionnairesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-8">
-              <span className="font-bold text-lg text-blue-600">JECRC SCM Vendor Portal</span>
+              <span className="font-bold text-sm sm:text-base text-blue-600">JECRC Medical College Hospital &amp; Research Centre <span className="text-xs text-gray-500 font-normal">(A Unit of JECRC)</span></span>
               <Link href="/vendor/dashboard" className="text-gray-500 hover:text-gray-700 px-1 pt-1 text-sm">
                 Dashboard
               </Link>

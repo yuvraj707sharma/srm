@@ -24,7 +24,7 @@ def send_otp_email(to_email: str, otp_code: str):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JECRC SCM - Security Verification Code</title>
+  <title>JECRC Medical College Hospital &amp; Research Centre - Security Verification Code</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     
@@ -68,7 +68,7 @@ def send_otp_email(to_email: str, otp_code: str):
               
               <!-- Brand Badge -->
               <div style="display: inline-block; padding: 6px 16px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 50px; margin-bottom: 16px;">
-                <span style="font-size: 11px; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 1.5px;">JECRC SCM PORTAL</span>
+                <span style="font-size: 11px; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 1.5px;">JECRC MEDICAL COLLEGE HOSPITAL &amp; RESEARCH CENTRE (A UNIT OF JECRC)</span>
               </div>
               
               <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">Verification Required</h1>
@@ -139,13 +139,13 @@ def send_otp_email(to_email: str, otp_code: str):
 </html>"""
 
     msg = EmailMessage()
-    msg["Subject"] = f"🔐 {otp_code} is your JECRC SCM Verification Code"
-    msg["From"] = f"JECRC SCM Portal <{settings.SMTP_USERNAME}>"
+    msg["Subject"] = f"🔐 {otp_code} is your Verification Code - JECRC Medical College Hospital & Research Centre"
+    msg["From"] = f"JECRC Medical College Hospital & Research Centre <{settings.SMTP_USERNAME}>"
     msg["To"] = to_email
 
     # Plain text fallback for non-HTML email clients
     plain_text = (
-        f"JECRC SCM VENDOR PORTAL - VERIFICATION CODE\n\n"
+        f"JECRC MEDICAL COLLEGE HOSPITAL & RESEARCH CENTRE (A UNIT OF JECRC) - VERIFICATION CODE\n\n"
         f"Your OTP code is: {otp_code}\n\n"
         f"This code will expire in 10 minutes.\n"
         f"Do not share this code with anyone for your security."
@@ -209,7 +209,7 @@ def send_boq_invitation_email(
           </tr>
           <tr>
             <td style="padding: 32px;">
-              <div style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">JECRC Foundation SCM Portal</div>
+              <div style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">JECRC Medical College Hospital &amp; Research Centre (A Unit of JECRC)</div>
               <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #ffffff;">New BOQ Tender Published</h2>
               <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
                 Dear <strong>{vendor_name}</strong>,<br><br>
@@ -262,11 +262,11 @@ def send_boq_invitation_email(
 
     msg = EmailMessage()
     msg["Subject"] = f"🔔 Tender Invitation: {tender_title} [{tender_number or boq_id[:8]}]"
-    msg["From"] = f"JECRC SCM Portal <{settings.SMTP_USERNAME}>"
+    msg["From"] = f"JECRC Medical College Hospital & Research Centre <{settings.SMTP_USERNAME}>"
     msg["To"] = to_email
 
     plain_text = (
-        f"NEW TENDER INVITATION - JECRC SCM\n\n"
+        f"NEW TENDER INVITATION - JECRC MEDICAL COLLEGE HOSPITAL & RESEARCH CENTRE (A UNIT OF JECRC)\n\n"
         f"Dear {vendor_name},\n"
         f"You are invited to bid for: {tender_title}\n"
         f"Tender Ref: {tender_number or boq_id[:8]}\n"
