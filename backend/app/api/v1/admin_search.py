@@ -246,6 +246,54 @@ async def _internal_search(q: str, db: AsyncSession, embedding_provider) -> List
             seen.add(r["draft_id"])
             merged.append(r)
 
+    # Also match registered vendor organizations directly by legal name, display name, category, supply category, or city
+    terms = [t.strip().lower() for t in q.split() if len(t.strip()) >= 2]
+    if terms:
+        org_conditions = []
+        for term in terms:
+            like = f"%{term}%"
+            org_conditions.append(
+                or_(
+                    func.lower(VendorOrganization.legal_name).like(like),
+                    func.lower(VendorOrganization.display_name).like(like),
+                    func.lower(VendorOrganization.vendor_category).like(like),
+                    func.lower(VendorOrganization.supply_category).like(like),
+                    func.lower(VendorOrganization.supply_categories_list).like(like),
+                    func.lower(VendorOrganization.city).like(like),
+                )
+            )
+        try:
+            org_stmt = (
+                select(VendorOrganization)
+                .options(selectinload(VendorOrganization.contacts))
+                .where(or_(*org_conditions))
+                .limit(20)
+            )
+            org_res = await db.execute(org_stmt)
+            matched_orgs = org_res.scalars().all()
+            for org in matched_orgs:
+                dummy_draft_id = f"org_{org.id}"
+                if dummy_draft_id not in seen:
+                    seen.add(dummy_draft_id)
+                    merged.append({
+                        "draft_id": dummy_draft_id,
+                        "catalog_id": None,
+                        "score": 0.88,
+                        "match_type": "vendor_profile",
+                        "draft_status": org.status,
+                        "product_name": org.supply_category or org.vendor_category or org.legal_name,
+                        "description": f"Empaneled Vendor ({org.status}) — Category: {org.vendor_category or 'General'}, Supply Category: {org.supply_category or 'Hospital Supplies'}",
+                        "attributes": {
+                            "category": org.vendor_category,
+                            "supply_category": org.supply_category,
+                            "city": org.city,
+                            "state": org.state_province
+                        },
+                        "vendor": _build_vendor_info(org),
+                    })
+        except Exception as e:
+            logger.warning("Direct vendor org search failed: %s", e)
+
     return merged
 
 

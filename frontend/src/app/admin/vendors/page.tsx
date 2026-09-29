@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { fetchApi } from "../../../../lib/api/client";
 
@@ -29,6 +29,8 @@ export default function AdminVendorsPage() {
 
   // Filters & Sorting
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [sortBy, setSortBy] = useState<"default" | "score" | "turnover" | "projects">("score");
 
   // 5-Point Evaluation States
@@ -489,9 +491,65 @@ Procurement & Empanelment Committee`;
     }
   };
 
-  const filteredVendors = [...vendors].filter(v => 
-    filterStatus === "ALL" ? true : v.status === filterStatus
-  ).sort((a, b) => {
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+    vendors.forEach(v => {
+      if (v.vendor_category && v.vendor_category.trim()) set.add(v.vendor_category.trim());
+      if (v.supply_category && v.supply_category.trim()) set.add(v.supply_category.trim());
+    });
+    // Standard healthcare supply categories fallback if database has few
+    const standard = [
+      "Medical Devices",
+      "Pharmaceuticals",
+      "Consumables & Disposables",
+      "Hospital Furniture",
+      "Laboratory & Diagnostics",
+      "Surgical Equipment",
+      "Orthopedics & Implants",
+      "Critical Care & ICU",
+      "Radiology & Imaging"
+    ];
+    standard.forEach(s => set.add(s));
+    return Array.from(set).sort();
+  }, [vendors]);
+
+  const filteredVendors = [...vendors].filter(v => {
+    // 1. Status Filter
+    if (filterStatus !== "ALL" && v.status !== filterStatus) return false;
+
+    // 2. Category Filter
+    if (selectedCategory !== "ALL") {
+      const target = selectedCategory.toLowerCase();
+      const vCat = (v.vendor_category || "").toLowerCase();
+      const sCat = (v.supply_category || "").toLowerCase();
+      const listCat = (v.supply_categories_list || "").toLowerCase();
+      if (!vCat.includes(target) && !sCat.includes(target) && !listCat.includes(target)) {
+        return false;
+      }
+    }
+
+    // 3. Search Query (Name, PAN, GSTIN, City, State, Category, Contact, Email)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const name = (v.legal_name || "").toLowerCase();
+      const dName = (v.display_name || "").toLowerCase();
+      const pan = (v.pan_number || "").toLowerCase();
+      const gstin = (v.gstin || "").toLowerCase();
+      const city = (v.city || "").toLowerCase();
+      const state = (v.state_province || "").toLowerCase();
+      const cat = (v.vendor_category || "").toLowerCase();
+      const sCat = (v.supply_category || "").toLowerCase();
+      const contact = (v.primary_contact_person || "").toLowerCase();
+      const email = (v.primary_email || "").toLowerCase();
+
+      const match = name.includes(q) || dName.includes(q) || pan.includes(q) ||
+        gstin.includes(q) || city.includes(q) || state.includes(q) ||
+        cat.includes(q) || sCat.includes(q) || contact.includes(q) || email.includes(q);
+      if (!match) return false;
+    }
+
+    return true;
+  }).sort((a, b) => {
     if (sortBy === "score") {
       const scoreA = a.latest_evaluation?.total_score ?? -1;
       const scoreB = b.latest_evaluation?.total_score ?? -1;
@@ -1720,55 +1778,118 @@ Procurement & Empanelment Committee`;
         ) : (
           /* Vendor List Table */
           <div className="bg-white shadow-lg rounded-xl overflow-hidden border border-gray-100 animate-fade-in-up">
-            <div className="px-6 py-5 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                  Registered Vendors & Empanelment Rankings
-                  <span className="ml-3 bg-blue-100 text-blue-800 text-xs py-0.5 px-2.5 rounded-full font-bold">{filteredVendors.length}</span>
-                </h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Sorted according to 5-point pre-qualification scores to easily identify the best vendor.
-                </p>
-              </div>
+            {/* Table Header & Search Controls */}
+            <div className="px-6 py-5 border-b border-gray-100 bg-gray-50 space-y-4">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center">
+                    Registered Vendors &amp; Empanelment Rankings
+                    <span className="ml-3 bg-blue-100 text-blue-800 text-xs py-0.5 px-2.5 rounded-full font-bold">
+                      {filteredVendors.length} of {vendors.length}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Search and filter registered suppliers by category, review 5-point pre-qualification scores, and inspect profiles.
+                  </p>
+                </div>
 
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                 <button
                   onClick={() => { setShowCriteriaModal(true); loadCriteria(); }}
-                  className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                   title="Configure and evaluate the 5 criteria for vendor empanelment"
                 >
                   <span className="text-sm">⚙️</span>
-                  <span>5 Empanelment Criteria & Rules</span>
+                  <span>5 Empanelment Criteria &amp; Rules</span>
                 </button>
+              </div>
 
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Sort:</span>
-                  <select
-                    value={sortBy}
-                    onChange={(e: any) => setSortBy(e.target.value)}
-                    className="text-xs border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 py-1.5 pl-2.5 pr-7 shadow-xs font-semibold bg-white text-gray-800"
-                  >
-                    <option value="score">🏆 Best Ranking (By Score)</option>
-                    <option value="turnover">💰 Turnover (Highest First)</option>
-                    <option value="projects">🏥 Hospital Projects (Most First)</option>
-                    <option value="default">⏱️ Registration Date (Newest)</option>
-                  </select>
+              {/* Filter Controls Row */}
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-1 border-t border-gray-200/60">
+                {/* Search Input Box */}
+                <div className="relative flex-1 min-w-[260px]">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by vendor name, PAN, city, category, contact..."
+                    className="w-full text-xs font-medium border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg py-2 pl-9 pr-8 shadow-xs bg-white text-gray-800 outline-none transition-all"
+                  />
+                  <span className="absolute left-3 top-2.5 text-gray-400 text-xs">🔍</span>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 text-xs bg-gray-100 hover:bg-gray-200 rounded-full w-5 h-5 flex items-center justify-center transition-colors"
+                      title="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Status:</span>
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="text-xs border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 py-1.5 pl-2.5 pr-7 shadow-xs font-medium bg-white text-gray-800"
-                  >
-                    <option value="ALL">All Statuses</option>
-                    <option value="DRAFT">Draft</option>
-                    <option value="SUBMITTED">Submitted</option>
-                    <option value="UNDER_REVIEW">Under Review</option>
-                    <option value="APPROVED">Approved</option>
-                    <option value="REJECTED">Rejected</option>
-                  </select>
+                {/* Dropdowns */}
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  {/* Category Filter */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Category:</span>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 py-2 pl-2.5 pr-7 shadow-xs font-medium bg-white text-gray-800 outline-none"
+                    >
+                      <option value="ALL">All Categories</option>
+                      {availableCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Status Filter */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Status:</span>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 py-2 pl-2.5 pr-7 shadow-xs font-medium bg-white text-gray-800 outline-none"
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="DRAFT">Draft</option>
+                      <option value="SUBMITTED">Submitted</option>
+                      <option value="UNDER_REVIEW">Under Review</option>
+                      <option value="APPROVED">Approved</option>
+                      <option value="REJECTED">Rejected</option>
+                    </select>
+                  </div>
+
+                  {/* Sort Filter */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Sort:</span>
+                    <select
+                      value={sortBy}
+                      onChange={(e: any) => setSortBy(e.target.value)}
+                      className="text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 py-2 pl-2.5 pr-7 shadow-xs font-semibold bg-white text-gray-800 outline-none"
+                    >
+                      <option value="score">🏆 Best Score Rank</option>
+                      <option value="turnover">💰 Turnover (Highest)</option>
+                      <option value="projects">🏥 Projects (&gt;300 Beds)</option>
+                      <option value="default">⏱️ Registration Date</option>
+                    </select>
+                  </div>
+
+                  {/* Reset Filters button */}
+                  {(searchQuery || selectedCategory !== "ALL" || filterStatus !== "ALL") && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSelectedCategory("ALL");
+                        setFilterStatus("ALL");
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-bold underline px-1 py-1"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { fetchApi } from "../../../../lib/api/client";
 
 interface ExternalVendor {
@@ -384,6 +385,8 @@ export default function VendorSearchPage() {
   const [city, setCity] = useState("");
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState<ExternalVendor[]>([]);
+  const [internalVendors, setInternalVendors] = useState<any[]>([]);
+  const [activeResultTab, setActiveResultTab] = useState<"external" | "internal">("external");
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
   const [filterText, setFilterText] = useState("");
@@ -391,7 +394,7 @@ export default function VendorSearchPage() {
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
-    setLoading(true); setError(""); setVendors([]); setSearched(false); setFilterText("");
+    setLoading(true); setError(""); setVendors([]); setInternalVendors([]); setSearched(false); setFilterText("");
     try {
       const params = new URLSearchParams({ q: query.trim() });
       if (country.trim()) params.set("country", country.trim());
@@ -407,8 +410,17 @@ export default function VendorSearchPage() {
         throw new Error(errMsg);
       }
       const data = await res.json();
-      setVendors(data.external || []);
+      const extList = data.external || [];
+      const intList = data.internal || [];
+      setVendors(extList);
+      setInternalVendors(intList);
       setSearched(true);
+      // Auto-switch to internal tab if external is empty and internal has matches
+      if (extList.length === 0 && intList.length > 0) {
+        setActiveResultTab("internal");
+      } else {
+        setActiveResultTab("external");
+      }
     } catch (err: any) {
       setError(err.message || "Search failed");
     } finally {
@@ -516,48 +528,195 @@ export default function VendorSearchPage() {
       {/* Search Results Display */}
       {!loading && searched && (
         <div className="space-y-6">
-          {/* Results Summary & In-Page Filter Bar */}
+          {/* Results Summary Header */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h2 className="text-xl font-black text-slate-900">
-                  {vendors.length > 0 ? `${vendors.length} Verified Vendors Found` : "No Vendors Found"}
+                  {vendors.length + internalVendors.length > 0 
+                    ? `${vendors.length + internalVendors.length} Total Matching Suppliers Found` 
+                    : "No Suppliers Found"}
                 </h2>
                 <span className="text-xs font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full">
                   📍 {[city, state, country].filter(Boolean).join(", ") || "Global Search"} · {query}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">Sourced dynamically via Gemini AI with Google Search Grounding</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Displaying category-tailored verified industry suppliers and registered hospital vendors.
+              </p>
             </div>
 
-            {vendors.length > 0 && (
+            {/* In-page filter for external list */}
+            {activeResultTab === "external" && vendors.length > 0 && (
               <div className="w-full sm:w-72 relative">
                 <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)}
-                  placeholder="Filter 20 vendors by name or city..."
+                  placeholder="Filter suppliers by name or city..."
                   className="w-full text-xs font-medium border border-slate-200 focus:border-indigo-600 rounded-xl px-3.5 py-2 pl-9 outline-none transition-all" />
                 <span className="absolute left-3 top-2.5 text-slate-400 text-xs">🔍</span>
               </div>
             )}
           </div>
 
-          {/* Vendors List */}
-          {filteredVendors.length === 0 ? (
-            <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl">
-              <span className="text-5xl block mb-4">🔍</span>
-              <p className="text-slate-700 font-bold">No vendors match your search or filter.</p>
-              <p className="text-slate-400 text-xs mt-1">Try clearing the filter text or adjusting your location query.</p>
+          {/* Results Tabs: Verified AI Suppliers vs JECRC Registered Vendors */}
+          <div className="flex border-b border-slate-200 gap-3">
+            <button
+              onClick={() => setActiveResultTab("external")}
+              className={`pb-3 px-4 font-bold text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                activeResultTab === "external"
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <span>🌐 Verified Industry Suppliers &amp; OEMs</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+                activeResultTab === "external" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"
+              }`}>
+                {vendors.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveResultTab("internal")}
+              className={`pb-3 px-4 font-bold text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                activeResultTab === "internal"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <span>🏥 JECRC Empaneled / Registered Vendors</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+                activeResultTab === "internal" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
+              }`}>
+                {internalVendors.length}
+              </span>
+            </button>
+          </div>
+
+          {/* TAB 1: External AI Verified Suppliers */}
+          {activeResultTab === "external" && (
+            <div>
+              {filteredVendors.length === 0 ? (
+                <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl">
+                  <span className="text-5xl block mb-4">🔍</span>
+                  <p className="text-slate-700 font-bold">No suppliers match your search or filter.</p>
+                  <p className="text-slate-400 text-xs mt-1">Try clearing the filter text or adjusting your search category.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {filteredVendors.map((v, i) => (
+                    <VendorCardStructured 
+                      key={i} 
+                      vendor={v} 
+                      idx={i} 
+                      activeTab="" 
+                      toggleTab={() => {}} 
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="space-y-6">
-              {filteredVendors.map((v, i) => (
-                <VendorCardStructured 
-                  key={i} 
-                  vendor={v} 
-                  idx={i} 
-                  activeTab="" 
-                  toggleTab={() => {}} 
-                />
-              ))}
+          )}
+
+          {/* TAB 2: Internal Registered Vendors */}
+          {activeResultTab === "internal" && (
+            <div className="space-y-4">
+              {internalVendors.length === 0 ? (
+                <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl p-8 space-y-3">
+                  <span className="text-5xl block mb-2">🏥</span>
+                  <h3 className="text-base font-bold text-slate-800">No Registered Hospital Vendors Found for "{query}"</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    None of your currently registered or empaneled vendors in JECRC SRM have uploaded products or registered under this category yet.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setActiveResultTab("external")}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
+                    >
+                      View {vendors.length} Verified Industry Suppliers →
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {internalVendors.map((item, idx) => {
+                    const v = item.vendor || {};
+                    const prods = item.products || [];
+                    return (
+                      <div key={idx} className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3.5 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h3 className="font-bold text-base text-slate-900">{v.legal_name || "Unknown Organization"}</h3>
+                              {v.trade_name && v.trade_name !== v.legal_name && (
+                                <p className="text-xs text-slate-500 font-medium">{v.trade_name}</p>
+                              )}
+                            </div>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${
+                              v.status === "APPROVED" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                              v.status === "REJECTED" ? "bg-red-100 text-red-800 border border-red-200" :
+                              "bg-amber-100 text-amber-800 border border-amber-200"
+                            }`}>
+                              {v.status || "REGISTERED"}
+                            </span>
+                          </div>
+
+                          {/* Category and location */}
+                          <div className="flex flex-wrap gap-1.5 mt-2.5">
+                            {v.vendor_category && (
+                              <span className="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-md font-semibold">
+                                {v.vendor_category}
+                              </span>
+                            )}
+                            {v.supply_category && (
+                              <span className="text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 rounded-md font-semibold">
+                                {v.supply_category}
+                              </span>
+                            )}
+                            <span className="text-[11px] bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-md">
+                              📍 {[v.city, v.country || "India"].filter(Boolean).join(", ")}
+                            </span>
+                          </div>
+
+                          {/* Matching Products or Services */}
+                          {prods.length > 0 ? (
+                            <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
+                              <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Matching Catalog Products ({prods.length})</p>
+                              {prods.slice(0, 3).map((p: any, pIdx: number) => (
+                                <div key={pIdx} className="text-xs text-slate-700 flex items-center justify-between">
+                                  <span className="font-medium">• {p.product_name}</span>
+                                  {p.score && <span className="text-[10px] text-emerald-600 font-bold">{Math.round(p.score * 100)}% match</span>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : item.description ? (
+                            <p className="text-xs text-slate-600 mt-2.5 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              {item.description}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        {/* Footer Contact & Action */}
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                          <div className="text-slate-500">
+                            {v.primary_contact?.email || v.primary_contact?.phone ? (
+                              <span>📞 {v.primary_contact.email || v.primary_contact.phone}</span>
+                            ) : (
+                              <span>Empaneled SRM Vendor</span>
+                            )}
+                          </div>
+                          <Link
+                            href="/admin/vendors"
+                            className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1"
+                          >
+                            <span>Inspect Profile</span>
+                            <span>→</span>
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
