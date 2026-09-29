@@ -72,6 +72,23 @@ class VendorService:
             "is_blacklisted", "pending_litigation", "not_debarred_declaration"
         }
         
+        from app.core.validators import (
+            clean_pan, clean_gstin, clean_pin_code, clean_phone
+        )
+
+        if "pan_number" in data and data["pan_number"]:
+            data["pan_number"] = clean_pan(data["pan_number"])
+        if "gstin" in data and data["gstin"]:
+            data["gstin"] = clean_gstin(data["gstin"])
+        if "postal_code" in data and data["postal_code"]:
+            data["postal_code"] = clean_pin_code(data["postal_code"])
+        if "primary_phone" in data and data["primary_phone"]:
+            data["primary_phone"] = clean_phone(data["primary_phone"])
+        if "alternate_phone" in data and data["alternate_phone"]:
+            data["alternate_phone"] = clean_phone(data["alternate_phone"])
+        if "head_phone" in data and data["head_phone"]:
+            data["head_phone"] = clean_phone(data["head_phone"])
+
         for key, value in data.items():
             if key in allowed_fields:
                 setattr(org, key, value)
@@ -147,36 +164,66 @@ class VendorService:
         from app.models.document import Document
         from app.models.vendor import VendorBankDetails
 
+        from app.core.validators import (
+            is_valid_pan, is_valid_gstin, validate_gstin_matches_pan,
+            is_valid_pin_code, is_valid_phone, is_valid_ifsc
+        )
+
         missing = []
         if not org.legal_name or not str(org.legal_name).strip():
             missing.append("Legal Name of Company")
+
+        # PAN validation
         if not org.pan_number or not str(org.pan_number).strip():
             missing.append("PAN Number")
+        elif not is_valid_pan(org.pan_number):
+            missing.append(f"Valid 10-character PAN (Expected format: ABCDE1234F, provided: '{org.pan_number}')")
+
+        # GSTIN validation
         if not org.gstin or not str(org.gstin).strip():
             missing.append("GSTIN")
+        elif not is_valid_gstin(org.gstin):
+            missing.append(f"Valid 15-character GSTIN (Expected format: 08ABCDE1234F1Z5, provided: '{org.gstin}')")
+        elif is_valid_pan(org.pan_number):
+            matches, ext_pan = validate_gstin_matches_pan(org.gstin, org.pan_number)
+            if not matches:
+                missing.append(f"GSTIN matching company PAN (GSTIN contains PAN '{ext_pan}', but your PAN is '{org.pan_number}')")
+
         if not org.address_line_1 or not str(org.address_line_1).strip():
             missing.append("Registered Address Line 1")
         if not org.city or not str(org.city).strip():
             missing.append("City")
         if not org.state_province or not str(org.state_province).strip():
             missing.append("State")
+
+        # PIN Code validation
         if not org.postal_code or not str(org.postal_code).strip():
             missing.append("PIN Code")
+        elif not is_valid_pin_code(org.postal_code):
+            missing.append(f"Valid 6-digit PIN Code (e.g. 302022, provided: '{org.postal_code}')")
+
         if not org.primary_contact_person or not str(org.primary_contact_person).strip():
             missing.append("Primary Contact Person")
+
+        # Phone validation
         if not org.primary_phone or not str(org.primary_phone).strip():
             missing.append("Primary Contact Mobile Number")
+        elif not is_valid_phone(org.primary_phone):
+            missing.append(f"Valid 10-digit Primary Contact Mobile Number (provided: '{org.primary_phone}')")
+
         if not org.primary_email or not str(org.primary_email).strip():
             missing.append("Primary Contact Email")
         if not org.head_name or not str(org.head_name).strip():
             missing.append("Head of Organisation Name")
 
-        # Check bank details
+        # Check bank details & IFSC validation
         bank_stmt = select(VendorBankDetails).where(VendorBankDetails.vendor_organization_id == org.id)
         res = await self.db.execute(bank_stmt)
         bank = res.scalar_one_or_none()
         if not bank or not bank.bank_name or not bank.account_number or not bank.ifsc_code:
             missing.append("Bank Details (Bank Name, Account Number, IFSC Code)")
+        elif not is_valid_ifsc(bank.ifsc_code):
+            missing.append(f"Valid 11-character Bank IFSC Code (e.g. SBIN0000691, provided: '{bank.ifsc_code}')")
 
         # Check required documents
         doc_stmt = select(Document.document_type).where(Document.vendor_organization_id == org.id)
@@ -198,7 +245,7 @@ class VendorService:
         if missing:
             raise APIException(
                 "BAD_REQUEST", 
-                f"Cannot submit profile. Missing required fields/documents: {', '.join(missing)}", 
+                f"Cannot submit profile. Please address: {', '.join(missing)}", 
                 400
             )
 
@@ -209,17 +256,8 @@ class VendorService:
 
     async def upsert_bank_details(self, org_id: str, data: dict) -> None:
         from app.models.vendor import VendorBankDetails
-        stmt = select(VendorBankDetails).where(VendorBankDetails.vendor_organization_id == org_id)
-        res = await self.db.execute(stmt)
-        bank = res.scalar_one_or_none()
+        from app.core.validators import clean_ifsc
         
-        if not bank:
-            bank = VendorBankDetails(vendor_organization_id=org_id)
-            self.db.add(bank)
-            
-
-    async def upsert_bank_details(self, org_id: str, data: dict) -> None:
-        from app.models.vendor import VendorBankDetails
         stmt = select(VendorBankDetails).where(VendorBankDetails.vendor_organization_id == org_id)
         res = await self.db.execute(stmt)
         bank = res.scalar_one_or_none()
@@ -231,6 +269,8 @@ class VendorService:
         allowed = {"bank_name", "branch_name", "account_name", "account_number", "ifsc_code", "account_type"}
         for k, v in data.items():
             if k in allowed:
+                if k == "ifsc_code":
+                    v = clean_ifsc(v)
                 setattr(bank, k, v)
         await self.db.commit()
 

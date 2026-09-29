@@ -91,7 +91,21 @@ async def update_master_data(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor organization not found.")
         
-    for key, value in req.dict(exclude_unset=True).items():
+    from app.core.validators import clean_pan, clean_gstin, clean_pin_code, clean_phone
+    
+    update_data = req.dict(exclude_unset=True)
+    if "pan_number" in update_data and update_data["pan_number"]:
+        update_data["pan_number"] = clean_pan(update_data["pan_number"])
+    if "gstin" in update_data and update_data["gstin"]:
+        update_data["gstin"] = clean_gstin(update_data["gstin"])
+    if "postal_code" in update_data and update_data["postal_code"]:
+        update_data["postal_code"] = clean_pin_code(update_data["postal_code"])
+    if "primary_phone" in update_data and update_data["primary_phone"]:
+        update_data["primary_phone"] = clean_phone(update_data["primary_phone"])
+    if "alternate_phone" in update_data and update_data["alternate_phone"]:
+        update_data["alternate_phone"] = clean_phone(update_data["alternate_phone"])
+
+    for key, value in update_data.items():
         setattr(vendor, key, value)
         
     await db.commit()
@@ -110,11 +124,16 @@ async def update_bank_details(
     res = await db.execute(stmt)
     bank = res.scalar_one_or_none()
     
+    from app.core.validators import clean_ifsc
+    bank_data = req.dict(exclude_unset=True)
+    if "ifsc_code" in bank_data and bank_data["ifsc_code"]:
+        bank_data["ifsc_code"] = clean_ifsc(bank_data["ifsc_code"])
+    
     if not bank:
-        bank = VendorBankDetails(vendor_organization_id=current_user.vendor_organization_id, **req.dict())
+        bank = VendorBankDetails(vendor_organization_id=current_user.vendor_organization_id, **bank_data)
         db.add(bank)
     else:
-        for key, value in req.dict(exclude_unset=True).items():
+        for key, value in bank_data.items():
             setattr(bank, key, value)
             
     await db.commit()

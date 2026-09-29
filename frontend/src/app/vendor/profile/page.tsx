@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchApi } from "../../../../lib/api/client";
 import { useAuth } from "../../../../lib/auth/AuthContext";
+import {
+  cleanPan, isValidPan,
+  cleanGstin, isValidGstin, gstinMatchesPan,
+  cleanIfsc, isValidIfsc,
+  cleanPinCode, isValidPinCode,
+  cleanPhone, isValidPhone
+} from "../../../../lib/validators";
 
 export default function CompleteWhiteVendorProfilePage() {
   const [profile, setProfile] = useState<any>(null);
@@ -224,21 +231,40 @@ export default function CompleteWhiteVendorProfilePage() {
         if (!vendorGroup.trim()) errors.push("Vendor Group");
         if (!vendorType.trim()) errors.push("Vendor Type");
         if (!vendorCategory.trim()) errors.push("Vendor Category");
-        if (!panNumber.trim()) errors.push("PAN Number");
+        if (!panNumber.trim()) {
+          errors.push("PAN Number");
+        } else if (!isValidPan(panNumber)) {
+          errors.push("Valid 10-character PAN (e.g. ABCDE1234F)");
+        }
         if (!uploadedTypes.includes("PAN")) errors.push("PAN Card Document Upload");
-        if (!gstin.trim()) errors.push("GST Number");
+        if (!gstin.trim()) {
+          errors.push("GST Number");
+        } else if (!isValidGstin(gstin)) {
+          errors.push("Valid 15-character GSTIN (e.g. 08ABCDE1234F1Z5)");
+        } else if (isValidPan(panNumber) && !gstinMatchesPan(gstin, panNumber).matches) {
+          const matchRes = gstinMatchesPan(gstin, panNumber);
+          errors.push(`GSTIN must match company PAN (GSTIN embeds '${matchRes.gstinPan}', but entered PAN is '${cleanPan(panNumber)}')`);
+        }
         if (!uploadedTypes.includes("GST")) errors.push("GST Certificate Document Upload");
         break;
 
       case 2: // Contact Details & Address
         if (!primaryContactPerson.trim()) errors.push("Primary Contact Person");
         if (!contactDesignation.trim()) errors.push("Contact Person Designation");
-        if (!primaryPhone.trim()) errors.push("Primary Contact Mobile Number");
+        if (!primaryPhone.trim()) {
+          errors.push("Primary Contact Mobile Number");
+        } else if (!isValidPhone(primaryPhone)) {
+          errors.push("Valid 10-digit Primary Contact Mobile Number");
+        }
         if (!primaryEmail.trim()) errors.push("Official Email");
         if (!addressLine1.trim()) errors.push("Registered Address Line 1");
         if (!stateProvince.trim()) errors.push("State");
         if (!city.trim()) errors.push("City");
-        if (!postalCode.trim()) errors.push("PIN Code");
+        if (!postalCode.trim()) {
+          errors.push("PIN Code");
+        } else if (!isValidPinCode(postalCode)) {
+          errors.push("Valid 6-digit PIN Code (e.g. 302022)");
+        }
         break;
 
       case 3: // Head of Organisation
@@ -253,7 +279,11 @@ export default function CompleteWhiteVendorProfilePage() {
         if (!branchName.trim()) errors.push("Branch Name");
         if (!accountName.trim()) errors.push("Account Holder Name");
         if (!accountNumber.trim()) errors.push("Account Number");
-        if (!ifscCode.trim()) errors.push("IFSC Code");
+        if (!ifscCode.trim()) {
+          errors.push("IFSC Code");
+        } else if (!isValidIfsc(ifscCode)) {
+          errors.push("Valid 11-character Bank IFSC Code (e.g. SBIN0000691)");
+        }
         if (!uploadedTypes.includes("CANCELLED_CHEQUE")) errors.push("Cancelled Cheque / Bank Letter Upload");
         break;
 
@@ -970,13 +1000,72 @@ export default function CompleteWhiteVendorProfilePage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">PAN Number <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={panNumber} onChange={e => setPanNumber(e.target.value.toUpperCase())} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500 mb-2" placeholder="AABCA1234F" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 uppercase">
+                      PAN Number <span className="text-red-600 font-bold">*</span>
+                    </label>
+                    {panNumber && (
+                      <span className={`text-[11px] font-medium ${
+                        isValidPan(panNumber) ? "text-emerald-600 font-semibold" : panNumber.length === 10 ? "text-rose-600 font-medium" : "text-gray-400"
+                      }`}>
+                        {isValidPan(panNumber) ? "✓ Valid PAN" : panNumber.length === 10 ? "⚠️ Invalid PAN structure" : `${panNumber.length}/10 chars`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    disabled={isLocked}
+                    required
+                    maxLength={10}
+                    value={panNumber}
+                    onChange={e => setPanNumber(cleanPan(e.target.value).slice(0, 10))}
+                    className={`w-full bg-white border ${
+                      isValidPan(panNumber) ? "border-emerald-500 focus:ring-emerald-400" : panNumber.length === 10 ? "border-rose-400 focus:ring-rose-400" : "border-gray-300 focus:ring-blue-500"
+                    } rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500 mb-1`}
+                    placeholder="ABCDE1234F"
+                  />
+                  <p className="text-[11px] text-gray-500 mb-2">Format: 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)</p>
                   <InlineDocUploader docType="PAN" label="PAN Card Document Copy" required={true} description="Upload self-attested PAN card scan (PDF/Image)" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">GST Number <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500 mb-2" placeholder="08AABCA1234F1Z8" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 uppercase">
+                      GST Number <span className="text-red-600 font-bold">*</span>
+                    </label>
+                    {gstin && (
+                      <span className={`text-[11px] font-medium ${
+                        isValidGstin(gstin) && (!isValidPan(panNumber) || gstinMatchesPan(gstin, panNumber).matches)
+                          ? "text-emerald-600 font-semibold"
+                          : "text-rose-600 font-medium"
+                      }`}>
+                        {isValidGstin(gstin)
+                          ? (isValidPan(panNumber) && !gstinMatchesPan(gstin, panNumber).matches
+                              ? "⚠️ PAN mismatch"
+                              : "✓ Valid GSTIN")
+                          : gstin.length === 15 ? "⚠️ Invalid GST structure" : `${gstin.length}/15 chars`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    disabled={isLocked}
+                    required
+                    maxLength={15}
+                    value={gstin}
+                    onChange={e => setGstin(cleanGstin(e.target.value).slice(0, 15))}
+                    className={`w-full bg-white border ${
+                      isValidGstin(gstin) && (!isValidPan(panNumber) || gstinMatchesPan(gstin, panNumber).matches)
+                        ? "border-emerald-500 focus:ring-emerald-400"
+                        : gstin.length === 15 ? "border-rose-400 focus:ring-rose-400" : "border-gray-300 focus:ring-blue-500"
+                    } rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500 mb-1`}
+                    placeholder="08ABCDE1234F1Z5"
+                  />
+                  {gstin && isValidPan(panNumber) && !gstinMatchesPan(gstin, panNumber).matches && gstin.length >= 12 && (
+                    <p className="text-[11px] text-rose-600 font-medium mb-1">
+                      ⚠️ GSTIN embeds '{gstin.substring(2, 12)}', which doesn't match PAN '{cleanPan(panNumber)}'.
+                    </p>
+                  )}
+                  <p className="text-[11px] text-gray-500 mb-2">Format: 2 state digits + 10 PAN chars + 1 entity num + 'Z' + 1 checksum</p>
                   <InlineDocUploader docType="GST" label="GST Registration Certificate" required={true} description="Upload official GST REG-06 registration certificate (PDF)" />
                 </div>
                 <div>
@@ -1031,8 +1120,25 @@ export default function CompleteWhiteVendorProfilePage() {
                   <input type="text" disabled={isLocked} required value={contactDesignation} onChange={e => setContactDesignation(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="VP - Institutional Tenders" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Mobile Number <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={primaryPhone} onChange={e => setPrimaryPhone(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="+91-9876543210" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 uppercase">
+                      Mobile Number <span className="text-red-600 font-bold">*</span>
+                    </label>
+                    {primaryPhone && (
+                      <span className={`text-[11px] font-medium ${isValidPhone(primaryPhone) ? "text-emerald-600 font-semibold" : "text-gray-400"}`}>
+                        {isValidPhone(primaryPhone) ? "✓ Valid Mobile" : "10-digit number required"}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    disabled={isLocked}
+                    required
+                    value={primaryPhone}
+                    onChange={e => setPrimaryPhone(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500"
+                    placeholder="9876543210 or +91 9876543210"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Alternate Mobile</label>
@@ -1080,8 +1186,26 @@ export default function CompleteWhiteVendorProfilePage() {
                   <input type="text" disabled={isLocked} required value={city} onChange={e => setCity(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="New Delhi / Jaipur" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">PIN Code <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={postalCode} onChange={e => setPostalCode(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="6-digit PIN" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 uppercase">
+                      PIN Code <span className="text-red-600 font-bold">*</span>
+                    </label>
+                    {postalCode && (
+                      <span className={`text-[11px] font-medium ${isValidPinCode(postalCode) ? "text-emerald-600 font-semibold" : "text-gray-400"}`}>
+                        {isValidPinCode(postalCode) ? "✓ Valid PIN" : `${postalCode.length}/6 digits`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    disabled={isLocked}
+                    required
+                    maxLength={6}
+                    value={postalCode}
+                    onChange={e => setPostalCode(cleanPinCode(e.target.value))}
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500"
+                    placeholder="302022"
+                  />
                 </div>
               </div>
             </div>
@@ -1147,8 +1271,31 @@ export default function CompleteWhiteVendorProfilePage() {
                   <input type="text" disabled={isLocked} required value={accountNumber} onChange={e => setAccountNumber(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500" placeholder="Account number" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">IFSC Code <span className="text-red-600 font-bold">*</span></label>
-                  <input type="text" disabled={isLocked} required value={ifscCode} onChange={e => setIfscCode(e.target.value.toUpperCase())} className="w-full bg-white border border-gray-300 rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500" placeholder="e.g. SBIN0001234" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 uppercase">
+                      IFSC Code <span className="text-red-600 font-bold">*</span>
+                    </label>
+                    {ifscCode && (
+                      <span className={`text-[11px] font-medium ${
+                        isValidIfsc(ifscCode) ? "text-emerald-600 font-semibold" : ifscCode.length === 11 ? "text-rose-600 font-medium" : "text-gray-400"
+                      }`}>
+                        {isValidIfsc(ifscCode) ? "✓ Valid IFSC" : ifscCode.length === 11 ? "⚠️ Invalid IFSC" : `${ifscCode.length}/11 chars`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    disabled={isLocked}
+                    required
+                    maxLength={11}
+                    value={ifscCode}
+                    onChange={e => setIfscCode(cleanIfsc(e.target.value).slice(0, 11))}
+                    className={`w-full bg-white border ${
+                      isValidIfsc(ifscCode) ? "border-emerald-500 focus:ring-emerald-400" : ifscCode.length === 11 ? "border-rose-400 focus:ring-rose-400" : "border-gray-300 focus:ring-blue-500"
+                    } rounded-lg px-3.5 py-2 text-gray-900 text-sm focus:ring-2 outline-none font-mono disabled:bg-gray-100 disabled:text-gray-500`}
+                    placeholder="e.g. SBIN0001234"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">4 letters + 0 + 6 alphanumeric branch code</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Account Type</label>

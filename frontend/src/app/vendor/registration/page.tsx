@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { fetchApi } from "../../../../lib/api/client";
 import { useRouter } from "next/navigation";
+import {
+  cleanPan, isValidPan,
+  cleanGstin, isValidGstin, gstinMatchesPan,
+  cleanIfsc, isValidIfsc,
+  cleanPinCode, isValidPinCode,
+  cleanPhone, isValidPhone
+} from "../../../../lib/validators";
 
 export default function VendorRegistrationPage() {
   const router = useRouter();
@@ -77,8 +84,66 @@ export default function VendorRegistrationPage() {
     { type: "CANCELLED_CHEQUE", file: null }
   ]);
 
-  const handleNext = () => setStep((s) => s + 1);
-  const handlePrev = () => setStep((s) => s - 1);
+  const handleNext = () => {
+    setError(null);
+    if (step === 1) {
+      if (!masterData.legal_name.trim()) {
+        setError("Legal Name is required.");
+        return;
+      }
+      if (!masterData.pan_number.trim()) {
+        setError("PAN Number is required.");
+        return;
+      }
+      if (!isValidPan(masterData.pan_number)) {
+        setError("Please enter a valid 10-character PAN number (e.g. ABCDE1234F).");
+        return;
+      }
+      if (!masterData.gstin.trim()) {
+        setError("GSTIN is required.");
+        return;
+      }
+      if (!isValidGstin(masterData.gstin)) {
+        setError("Please enter a valid 15-character GSTIN (e.g. 08ABCDE1234F1Z5).");
+        return;
+      }
+      const matchRes = gstinMatchesPan(masterData.gstin, masterData.pan_number);
+      if (!matchRes.matches) {
+        setError(`GSTIN does not match PAN! GSTIN embeds '${matchRes.gstinPan}', but entered PAN is '${cleanPan(masterData.pan_number)}'.`);
+        return;
+      }
+      if (!masterData.primary_phone.trim()) {
+        setError("Primary Phone is required.");
+        return;
+      }
+      if (!isValidPhone(masterData.primary_phone)) {
+        setError("Please enter a valid 10-digit mobile number.");
+        return;
+      }
+      if (!masterData.postal_code.trim()) {
+        setError("Postal Code / PIN is required.");
+        return;
+      }
+      if (!isValidPinCode(masterData.postal_code)) {
+        setError("Please enter a valid 6-digit PIN code.");
+        return;
+      }
+    } else if (step === 3) {
+      if (!bankDetails.bank_name.trim() || !bankDetails.account_name.trim() || !bankDetails.account_number.trim() || !bankDetails.ifsc_code.trim()) {
+        setError("All bank details (Bank Name, Account Name, Number, IFSC) are mandatory.");
+        return;
+      }
+      if (!isValidIfsc(bankDetails.ifsc_code)) {
+        setError("Please enter a valid 11-character Bank IFSC Code (e.g. SBIN0000691).");
+        return;
+      }
+    }
+    setStep((s) => s + 1);
+  };
+  const handlePrev = () => {
+    setError(null);
+    setStep((s) => s - 1);
+  };
 
   const addProject = () => {
     setProjects([...projects, { hospital_name: "", is_300_plus_beds: false, project_cost: 0, project_duration: "", financial_year: "" }]);
@@ -202,22 +267,78 @@ export default function VendorRegistrationPage() {
                   <input type="text" value={masterData.trade_name} onChange={e => setMasterData({...masterData, trade_name: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">PAN Number *</label>
-                  <input type="text" required value={masterData.pan_number} onChange={e => setMasterData({...masterData, pan_number: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">PAN Number *</label>
+                    {masterData.pan_number && (
+                      <span className={`text-[11px] font-medium ${
+                        isValidPan(masterData.pan_number) ? "text-emerald-600 font-semibold" : masterData.pan_number.length === 10 ? "text-rose-600 font-medium" : "text-gray-400"
+                      }`}>
+                        {isValidPan(masterData.pan_number) ? "✓ Valid PAN" : masterData.pan_number.length === 10 ? "⚠️ Invalid PAN" : `${masterData.pan_number.length}/10 chars`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={10}
+                    value={masterData.pan_number}
+                    onChange={e => setMasterData({...masterData, pan_number: cleanPan(e.target.value).slice(0, 10)})}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border font-mono"
+                    placeholder="ABCDE1234F"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Format: 5 letters + 4 digits + 1 letter</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">GSTIN *</label>
-                  <input type="text" required value={masterData.gstin} onChange={e => setMasterData({...masterData, gstin: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">GSTIN *</label>
+                    {masterData.gstin && (
+                      <span className={`text-[11px] font-medium ${
+                        isValidGstin(masterData.gstin) && (!isValidPan(masterData.pan_number) || gstinMatchesPan(masterData.gstin, masterData.pan_number).matches)
+                          ? "text-emerald-600 font-semibold"
+                          : "text-rose-600 font-medium"
+                      }`}>
+                        {isValidGstin(masterData.gstin)
+                          ? (isValidPan(masterData.pan_number) && !gstinMatchesPan(masterData.gstin, masterData.pan_number).matches
+                              ? "⚠️ PAN mismatch"
+                              : "✓ Valid GSTIN")
+                          : masterData.gstin.length === 15 ? "⚠️ Invalid GST" : `${masterData.gstin.length}/15 chars`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={15}
+                    value={masterData.gstin}
+                    onChange={e => setMasterData({...masterData, gstin: cleanGstin(e.target.value).slice(0, 15)})}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border font-mono"
+                    placeholder="08ABCDE1234F1Z5"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Format: 2 state digits + 10 PAN chars + 1 entity num + 'Z' + Checksum</p>
                 </div>
                 
                 {/* Contact and Address */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Primary Phone *</label>
-                  <input type="text" required value={masterData.primary_phone} onChange={e => setMasterData({...masterData, primary_phone: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">Primary Phone *</label>
+                    {masterData.primary_phone && (
+                      <span className={`text-[11px] font-medium ${isValidPhone(masterData.primary_phone) ? "text-emerald-600 font-semibold" : "text-gray-400"}`}>
+                        {isValidPhone(masterData.primary_phone) ? "✓ Valid Phone" : "10 digits"}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={masterData.primary_phone}
+                    onChange={e => setMasterData({...masterData, primary_phone: e.target.value})}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
+                    placeholder="9876543210"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Alternate Phone</label>
-                  <input type="text" value={masterData.alternate_phone} onChange={e => setMasterData({...masterData, alternate_phone: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
+                  <input type="text" value={masterData.alternate_phone} onChange={e => setMasterData({...masterData, alternate_phone: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" placeholder="Optional" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Address Line 1 *</label>
@@ -236,8 +357,23 @@ export default function VendorRegistrationPage() {
                   <input type="text" required value={masterData.state_province} onChange={e => setMasterData({...masterData, state_province: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Postal Code *</label>
-                  <input type="text" required value={masterData.postal_code} onChange={e => setMasterData({...masterData, postal_code: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">Postal Code *</label>
+                    {masterData.postal_code && (
+                      <span className={`text-[11px] font-medium ${isValidPinCode(masterData.postal_code) ? "text-emerald-600 font-semibold" : "text-gray-400"}`}>
+                        {isValidPinCode(masterData.postal_code) ? "✓ Valid PIN" : `${masterData.postal_code.length}/6 digits`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={masterData.postal_code}
+                    onChange={e => setMasterData({...masterData, postal_code: cleanPinCode(e.target.value)})}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
+                    placeholder="302022"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Website</label>
@@ -361,8 +497,26 @@ export default function VendorRegistrationPage() {
                   <input type="text" required value={bankDetails.account_number} onChange={e => setBankDetails({...bankDetails, account_number: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">IFSC Code *</label>
-                  <input type="text" required value={bankDetails.ifsc_code} onChange={e => setBankDetails({...bankDetails, ifsc_code: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">IFSC Code *</label>
+                    {bankDetails.ifsc_code && (
+                      <span className={`text-[11px] font-medium ${
+                        isValidIfsc(bankDetails.ifsc_code) ? "text-emerald-600 font-semibold" : bankDetails.ifsc_code.length === 11 ? "text-rose-600 font-medium" : "text-gray-400"
+                      }`}>
+                        {isValidIfsc(bankDetails.ifsc_code) ? "✓ Valid IFSC" : bankDetails.ifsc_code.length === 11 ? "⚠️ Invalid IFSC" : `${bankDetails.ifsc_code.length}/11 chars`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={11}
+                    value={bankDetails.ifsc_code}
+                    onChange={e => setBankDetails({...bankDetails, ifsc_code: cleanIfsc(e.target.value).slice(0, 11)})}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border font-mono"
+                    placeholder="SBIN0000691"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Format: 4 letters + 0 + 6 alphanumeric</p>
                 </div>
               </div>
             </div>
