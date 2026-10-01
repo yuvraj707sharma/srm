@@ -130,10 +130,39 @@ class DisqualifyPayload(BaseModel):
     is_disqualified: bool
     note: Optional[str] = None
 
+class ParseTextPayload(BaseModel):
+    raw_text: str
+    boq_type: Optional[str] = "COMMERCIAL"
+
 
 # -------------------------------------------------------------------------
 # Endpoints
 # -------------------------------------------------------------------------
+
+@router.post("/parse-text")
+async def parse_boq_from_text(
+    payload: ParseTextPayload,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """
+    Parse arbitrary pasted or typed BOQ text (medical equipment specs, room schedules, line items)
+    into structured items and custom columns using Gemini AI.
+    """
+    raw_text = payload.raw_text.strip()
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="Pasted BOQ text cannot be empty.")
+    
+    try:
+        extracted_data = await extract_boq_with_gemini(raw_text, boq_type=payload.boq_type or "COMMERCIAL")
+        return {
+            "status": "success",
+            "data": extracted_data
+        }
+    except Exception as e:
+        logger.error(f"Error parsing pasted BOQ text: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to parse BOQ text: {str(e)}")
+
 
 @router.post("/extract")
 async def extract_boq_from_file(

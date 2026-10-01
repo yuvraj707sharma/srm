@@ -49,6 +49,11 @@ export default function CreateUniversalBOQPage() {
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [documentVersionId, setDocumentVersionId] = useState<string | null>(null);
 
+  // Raw Pasted Text / Free-form Canvas State
+  const [rawPastedText, setRawPastedText] = useState("");
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [parsingText, setParsingText] = useState(false);
+
   // New Custom Column Input
   const [newColName, setNewColName] = useState("");
   const [showAddCol, setShowAddCol] = useState(false);
@@ -239,6 +244,112 @@ export default function CreateUniversalBOQPage() {
       setExtractionMsg(null);
       setUploadMode(null);
     }
+  };
+
+  // OPTION 4: Parse Raw Pasted Text / Free-Form Canvas
+  const handleParseRawText = async () => {
+    if (!rawPastedText.trim()) {
+      setError("Please paste or type your BOQ text / specifications before parsing.");
+      return;
+    }
+
+    setParsingText(true);
+    setError(null);
+
+    try {
+      const res = await fetchApi("/api/v1/admin/boq/parse-text", {
+        method: "POST",
+        body: JSON.stringify({
+          raw_text: rawPastedText,
+          boq_type: boqType,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to parse BOQ text.");
+      }
+
+      const result = await res.json();
+      const data = result.data || {};
+
+      setTitle(data.title || "Hospital Procurement BOQ");
+      setTenderNumber(data.tender_number || `JECRC/2026/${Math.floor(100 + Math.random() * 900)}`);
+      setDepartment(data.department || (boqType === "COMMERCIAL" ? "Medical Gas Pipeline (MGPS)" : "Medical Equipment"));
+      setDescription(data.description || rawPastedText);
+      setCustomColumns(data.custom_columns || []);
+      setItems(
+        data.items && data.items.length > 0
+          ? data.items
+          : [
+              {
+                item_code: "1",
+                item_name: "Procurement Package as specified",
+                specifications: rawPastedText.slice(0, 300) + "...",
+                quantity: 1,
+                uom: "Nos",
+                category: "General",
+                attributes: {},
+              },
+            ]
+      );
+
+      setShowTextInput(false);
+      setStep(2);
+    } catch (err: any) {
+      setError(err.message || "Failed to parse BOQ text with AI.");
+    } finally {
+      setParsingText(false);
+    }
+  };
+
+  const handleUseTextAsNarrativeOnly = () => {
+    if (!rawPastedText.trim()) {
+      setError("Please paste or type your BOQ text first.");
+      return;
+    }
+
+    setTitle(boqType === "COMMERCIAL" ? "Turnkey Procurement Tender" : "Medical Equipment Tender");
+    setTenderNumber(`JECRC/2026/${Math.floor(100 + Math.random() * 900)}`);
+    setDepartment("Hospital Infrastructure & Procurement");
+    setDescription(rawPastedText);
+    setCustomColumns(["Scope Reference"]);
+    setItems([
+      {
+        item_code: "1",
+        item_name: "Complete Turnkey Execution as per scope document",
+        specifications: rawPastedText.slice(0, 400) + (rawPastedText.length > 400 ? "..." : ""),
+        quantity: 1,
+        uom: "Job/Lot",
+        category: "Scope of Work",
+        attributes: { "Scope Reference": "Refer to Full Narrative Scope" },
+      },
+    ]);
+    setShowTextInput(false);
+    setStep(2);
+  };
+
+  // Bulk Quick Actions in Step 2
+  const handleAutoNumberCodes = (prefix: string = "ITEM-") => {
+    setItems((prev) =>
+      prev.map((it, idx) => ({
+        ...it,
+        item_code: `${prefix}${String(idx + 1).padStart(3, "0")}`,
+      }))
+    );
+  };
+
+  const handleSetAllUom = (targetUom: string) => {
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        uom: targetUom,
+      }))
+    );
+  };
+
+  const handleRemoveEmptyRows = () => {
+    setItems((prev) => prev.filter((it) => it.item_name.trim() !== ""));
   };
 
   // Manual Add Blank Item
@@ -596,88 +707,181 @@ export default function CreateUniversalBOQPage() {
                 </div>
               </div>
 
-              {/* SECTION C: ALTERNATIVE CREATION METHODS */}
-              <div>
-                <div className="text-center max-w-xl mx-auto mb-6">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
-                    Or Choose Another Ingestion Method
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* OPTION 1: Direct File Upload */}
-                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-emerald-500 transition-all p-6 shadow-xs flex flex-col justify-between group">
+              {/* FREE-FORM / PASTE RAW BOQ TEXT CANVAS (IF ACTIVE) */}
+              {showTextInput && (
+                <div className="bg-white rounded-3xl border-2 border-blue-500 p-6 sm:p-8 shadow-xl space-y-4 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
                     <div>
-                      <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-4 text-2xl border border-emerald-100 group-hover:scale-105 transition-transform">
-                        📄
-                      </div>
-                      <span className="inline-block px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
-                        Direct Attachment
-                      </span>
-                      <h3 className="text-base font-bold text-slate-900 mb-2">
-                        Upload File for Direct Download
+                      <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                        <span>✍️</span>
+                        <span>Free-Form Canvas: Write or Paste Entire BOQ / Specifications</span>
                       </h3>
-                      <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                        Upload any <strong>PDF, Excel, or Word</strong> file directly. Vendors download the original attached document without AI table parsing.
+                      <p className="text-xs text-slate-500">
+                        Paste any raw requisition text, equipment specs table, ambulance fitment schedule, or scope document.
                       </p>
                     </div>
-
                     <button
                       type="button"
-                      onClick={() => directFileInputRef.current?.click()}
-                      className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+                      onClick={() => setShowTextInput(false)}
+                      className="text-xs text-slate-400 hover:text-slate-700 font-bold self-start sm:self-auto px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg"
                     >
-                      <span>📎 Upload Document Directly</span>
+                      ✕ Close Canvas
                     </button>
                   </div>
 
-                  {/* OPTION 2: AI Table Extraction */}
-                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-blue-500 transition-all p-6 shadow-xs flex flex-col justify-between group relative overflow-hidden">
+                  <textarea
+                    value={rawPastedText}
+                    onChange={(e) => setRawPastedText(e.target.value)}
+                    rows={12}
+                    placeholder={`Paste your entire BOQ, equipment specifications, or requisition text here...
+Example:
+Item 1: 1.5T MRI Scanner with Zero-Boil-Off Magnet - Qty: 1 Set
+Item 2: Advanced Life Support Ambulance with Defibrillator, Ventilator, Stretcher - Qty: 2 Nos
+Item 3: PESO License & Cryogenic Tank Installation Scope...`}
+                    className="w-full text-xs font-mono p-4 rounded-2xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50/50 leading-relaxed"
+                  />
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+                    <span className="text-[11px] text-slate-400">
+                      {rawPastedText.length} characters • {rawPastedText.split("\n").filter(Boolean).length} lines entered
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={parsingText || !rawPastedText.trim()}
+                        onClick={handleParseRawText}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center space-x-2 disabled:opacity-50"
+                      >
+                        <span>{parsingText ? "⏳" : "⚡"}</span>
+                        <span>{parsingText ? "AI Parsing Lines & Parameters..." : "AI Parse into Structured Line Items (Recommended)"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={parsingText || !rawPastedText.trim()}
+                        onClick={handleUseTextAsNarrativeOnly}
+                        className="px-5 py-3 bg-slate-800 hover:bg-slate-900 text-slate-100 font-bold text-xs rounded-xl transition-all flex items-center space-x-2 disabled:opacity-50"
+                      >
+                        <span>📄</span>
+                        <span>Use as Scope Document & Set Evaluation Items</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION C: 4 CREATION METHODS */}
+              <div>
+                <div className="text-center max-w-xl mx-auto mb-6">
+                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                    Or Choose Your Preferred Ingestion Method
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* OPTION 1: AI Table Extraction */}
+                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-blue-500 transition-all p-5 shadow-xs flex flex-col justify-between group relative overflow-hidden">
                     <div>
-                      <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4 text-2xl border border-blue-100 group-hover:scale-105 transition-transform">
+                      <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-3 text-xl border border-blue-100 group-hover:scale-105 transition-transform">
                         ⚡
                       </div>
-                      <span className="inline-block px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
-                        Interactive Review
+                      <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 text-[9px] font-bold rounded-full mb-2 uppercase tracking-wide">
+                        File Extraction
                       </span>
-                      <h3 className="text-base font-bold text-slate-900 mb-2">
-                        AI Extract to Editable Grid
+                      <h3 className="text-sm font-bold text-slate-900 mb-1.5">
+                        AI Extract File to Table
                       </h3>
-                      <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                        Upload file. Gemini AI parses all items and columns into an editable table so you can review and tweak quantities before publishing.
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
+                        Upload Excel or PDF. Gemini AI parses all items and parameters into an editable table for review.
                       </p>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => aiFileInputRef.current?.click()}
-                      className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+                      className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1.5"
                     >
-                      <span>✨ Extract to Editable Table</span>
+                      <span>✨ Extract File</span>
                     </button>
                   </div>
 
-                  {/* OPTION 3: Create Manually */}
-                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-slate-800 transition-all p-6 shadow-xs flex flex-col justify-between group">
+                  {/* OPTION 2: Write / Paste Raw BOQ Text */}
+                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-indigo-500 transition-all p-5 shadow-xs flex flex-col justify-between group relative overflow-hidden">
                     <div>
-                      <div className="w-12 h-12 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center mb-4 text-2xl border border-slate-200 group-hover:scale-105 transition-transform">
-                        ✍️
+                      <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-3 text-xl border border-indigo-100 group-hover:scale-105 transition-transform">
+                        📝
                       </div>
-                      <span className="inline-block px-2.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full mb-2 uppercase tracking-wide">
-                        Manual Entry
+                      <span className="inline-block px-2 py-0.5 bg-indigo-100 text-indigo-800 text-[9px] font-bold rounded-full mb-2 uppercase tracking-wide">
+                        Paste / Blank Canvas
                       </span>
-                      <h3 className="text-base font-bold text-slate-900 mb-2">
-                        Create Form Manually
+                      <h3 className="text-sm font-bold text-slate-900 mb-1.5">
+                        Write / Paste Raw Text
                       </h3>
-                      <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                        Start from scratch without uploading a file. Build custom tender line items and specify item quantities directly in the editor.
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
+                        Paste raw requisition text, equipment specs, or table content directly into a blank canvas.
                       </p>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => {
-                        setTitle(boqType === "COMMERCIAL" ? "Liquid Medical Oxygen (LMO) Supply Tender" : "Procurement Tender");
+                        setShowTextInput(true);
+                        window.scrollTo({ top: 400, behavior: "smooth" });
+                      }}
+                      className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1.5"
+                    >
+                      <span>✍️ Open Text Canvas</span>
+                    </button>
+                  </div>
+
+                  {/* OPTION 3: Direct File Upload */}
+                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-emerald-500 transition-all p-5 shadow-xs flex flex-col justify-between group">
+                    <div>
+                      <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-3 text-xl border border-emerald-100 group-hover:scale-105 transition-transform">
+                        📎
+                      </div>
+                      <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-bold rounded-full mb-2 uppercase tracking-wide">
+                        Direct Attachment
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-900 mb-1.5">
+                        Direct Document Attach
+                      </h3>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
+                        Upload any PDF/DOCX tender file directly for vendors to download without parsing.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => directFileInputRef.current?.click()}
+                      className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1.5"
+                    >
+                      <span>📎 Attach Document</span>
+                    </button>
+                  </div>
+
+                  {/* OPTION 4: Create Manually */}
+                  <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-slate-800 transition-all p-5 shadow-xs flex flex-col justify-between group">
+                    <div>
+                      <div className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center mb-3 text-xl border border-slate-200 group-hover:scale-105 transition-transform">
+                        ✏️
+                      </div>
+                      <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 text-[9px] font-bold rounded-full mb-2 uppercase tracking-wide">
+                        Manual Grid
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-900 mb-1.5">
+                        Create Blank Grid
+                      </h3>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
+                        Build custom tender line items and specify quantities line-by-line in the table editor.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTitle(boqType === "COMMERCIAL" ? "Liquid Medical Oxygen (LMO) Supply Tender" : "Hospital Procurement Tender");
                         setTenderNumber(`JECRC/2026/${Math.floor(100 + Math.random() * 900)}`);
                         setDepartment(boqType === "COMMERCIAL" ? "Medical Gas Pipeline System (MGPS)" : "Medical Equipment");
                         setDescription(boqType === "COMMERCIAL" ? "Supply and distribution of Liquid Medical Oxygen with PESO and installation scope." : "Custom procurement tender created manually.");
@@ -695,9 +899,9 @@ export default function CreateUniversalBOQPage() {
                         ]);
                         setStep(2);
                       }}
-                      className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+                      className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1.5"
                     >
-                      <span>✏️ Create Blank Form Manually</span>
+                      <span>✏️ Blank Grid</span>
                     </button>
                   </div>
                 </div>
@@ -943,8 +1147,25 @@ export default function CreateUniversalBOQPage() {
           </div>
 
           {/* Line Items Table */}
+          {/* Full Pasted Scope / Document Reference (if available) */}
+          {description && description.length > 50 && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <span>📜</span>
+                  <span>Full Scope of Work / Tender Narrative Document</span>
+                </span>
+                <span className="text-[11px] text-slate-400">Preserved in tender record</span>
+              </div>
+              <p className="text-xs text-slate-600 font-mono bg-slate-50 p-4 rounded-xl border border-slate-100 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                {description}
+              </p>
+            </div>
+          )}
+
+          {/* Line Items Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+            <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
               <div>
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                   BOQ Line Items ({items.length})
@@ -953,21 +1174,58 @@ export default function CreateUniversalBOQPage() {
                   Click any cell to edit specifications, quantities, or custom attributes.
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleAddItem}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
-              >
-                + Add Line Item
-              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAutoNumberCodes("ITEM-")}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold shadow-xs"
+                  title="Auto-number item codes as ITEM-001, ITEM-002..."
+                >
+                  🔢 Auto-Number Codes
+                </button>
+
+                <div className="flex items-center space-x-1 bg-white border border-slate-200 px-2 py-1 rounded-lg text-xs shadow-xs">
+                  <span className="text-slate-400 font-medium text-[11px]">Set UOM:</span>
+                  {["Nos", "Sets", "Units", "Job/Lot", "SM3", "Kg"].map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      onClick={() => handleSetAllUom(u)}
+                      className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-slate-100 hover:bg-blue-100 hover:text-blue-800 text-slate-700 transition-colors"
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRemoveEmptyRows}
+                  className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-semibold shadow-xs"
+                  title="Remove rows with empty item name"
+                >
+                  🧹 Clean Empty
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center space-x-1"
+                >
+                  <span>+ Add Line Item</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto max-h-[500px]">
               <table className="w-full text-left border-collapse text-xs">
-                <thead className="bg-slate-100 sticky top-0 z-10 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200">
+                <thead className="bg-slate-100 sticky top-0 z-20 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-3 w-16 text-center">Code</th>
-                    <th className="px-3 py-3 min-w-[200px]">Item / Equipment Name</th>
+                    <th className="px-3 py-3 w-16 text-center sticky left-0 z-30 bg-slate-100">Code</th>
+                    <th className="px-3 py-3 min-w-[220px] sticky left-16 z-30 bg-slate-100 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
+                      Item / Equipment Name
+                    </th>
                     <th className="px-3 py-3 min-w-[240px]">Specifications / Description</th>
                     <th className="px-3 py-3 w-20 text-center">Qty</th>
                     <th className="px-3 py-3 w-20 text-center">UOM</th>
@@ -981,9 +1239,9 @@ export default function CreateUniversalBOQPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {items.map((it, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
-                      {/* Code */}
-                      <td className="px-2 py-2">
+                    <tr key={idx} className="hover:bg-slate-50/60 transition-colors group">
+                      {/* Sticky Code */}
+                      <td className="px-2 py-2 sticky left-0 z-10 bg-white group-hover:bg-slate-50">
                         <input
                           type="text"
                           value={it.item_code}
@@ -992,13 +1250,16 @@ export default function CreateUniversalBOQPage() {
                         />
                       </td>
 
-                      {/* Name */}
-                      <td className="px-2 py-2">
+                      {/* Sticky Name */}
+                      <td className="px-2 py-2 sticky left-16 z-10 bg-white group-hover:bg-slate-50 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                         <input
                           type="text"
                           value={it.item_name}
                           onChange={(e) => handleItemChange(idx, "item_name", e.target.value)}
-                          className="w-full px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-blue-500 font-semibold text-slate-900 bg-transparent text-xs"
+                          placeholder="Item Name *"
+                          className={`w-full px-2 py-1 rounded border ${
+                            !it.item_name.trim() ? "border-red-300 bg-red-50/30" : "border-transparent hover:border-slate-300"
+                          } focus:border-blue-500 font-semibold text-slate-900 text-xs`}
                         />
                       </td>
 
@@ -1019,7 +1280,9 @@ export default function CreateUniversalBOQPage() {
                           step="any"
                           value={it.quantity}
                           onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
-                          className="w-full text-center px-1 py-1 rounded border border-transparent hover:border-slate-300 focus:border-blue-500 font-semibold text-xs bg-transparent"
+                          className={`w-full text-center px-1 py-1 rounded border ${
+                            Number(it.quantity) <= 0 ? "border-amber-300 bg-amber-50/40" : "border-transparent hover:border-slate-300"
+                          } focus:border-blue-500 font-semibold text-xs`}
                         />
                       </td>
 
