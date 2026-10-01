@@ -87,45 +87,75 @@ async def seed():
         else:
             proc_admin_role.permissions = list(perms_dict.values())
 
-        # Check vendor org
-        res = await db.execute(select(VendorOrganization).where(VendorOrganization.legal_name == "Vendor A Test"))
-        vendor_a_org = res.scalars().first()
-        if not vendor_a_org:
-            vendor_a_org = VendorOrganization(
-                legal_name="Vendor A Test",
-                organization_type="Private",
-                country="India",
-                status="APPROVED",
-                verification_status="VERIFIED"
-            )
-            db.add(vendor_a_org)
-            await db.flush()
-        else:
-            vendor_a_org.status = "APPROVED"
-            vendor_a_org.verification_status = "VERIFIED"
+        # Seed Vendor Organizations & Accounts
+        vendors_to_seed = [
+            {
+                "email": "inox@test.com",
+                "name": "Akash (Inox Air Products)",
+                "org_name": "Inox Air Products Pvt Ltd",
+                "phone": "+91 9999596836",
+            },
+            {
+                "email": "linde@test.com",
+                "name": "Hardeep Singh (Linde India)",
+                "org_name": "Linde India Ltd",
+                "phone": "+91 9878219520",
+            },
+            {
+                "email": "wilson@test.com",
+                "name": "Utkarsh (Wilson Gases)",
+                "org_name": "Wilson Gases & Healthcare",
+                "phone": "+91 8385058000",
+            },
+            {
+                "email": "vendor_a@test.com",
+                "name": "Test Vendor",
+                "org_name": "Vendor A Test",
+                "phone": "+91 9876543210",
+            }
+        ]
 
-        # Vendor User
-        res = await db.execute(select(User).options(selectinload(User.roles)).where(User.email == "vendor_a@test.com"))
-        user = res.scalars().first()
-        if not user:
-            user = User(
-                email="vendor_a@test.com",
-                password_hash=get_password_hash("password123"),
-                full_name="Vendor A",
-                is_active=True,
-                is_verified=True,
-                vendor_organization_id=vendor_a_org.id,
-                roles=[vendor_role]
-            )
-            db.add(user)
-            await db.flush()
-        else:
-            user.password_hash = get_password_hash("password123")
-            user.is_active = True
-            user.is_verified = True
-            user.vendor_organization_id = vendor_a_org.id
-            if vendor_role not in user.roles:
-                user.roles.append(vendor_role)
+        for vinfo in vendors_to_seed:
+            res = await db.execute(select(VendorOrganization).where(VendorOrganization.legal_name == vinfo["org_name"]))
+            org = res.scalars().first()
+            if not org:
+                org = VendorOrganization(
+                    legal_name=vinfo["org_name"],
+                    trade_name=vinfo["org_name"],
+                    organization_type="Private Limited",
+                    country="India",
+                    status="APPROVED",
+                    verification_status="VERIFIED"
+                )
+                db.add(org)
+                await db.flush()
+            else:
+                org.status = "APPROVED"
+                org.verification_status = "VERIFIED"
+
+            res = await db.execute(select(User).options(selectinload(User.roles)).where(User.email == vinfo["email"]))
+            u = res.scalars().first()
+            if not u:
+                u = User(
+                    email=vinfo["email"],
+                    password_hash=get_password_hash("password123"),
+                    full_name=vinfo["name"],
+                    phone=vinfo["phone"],
+                    is_active=True,
+                    is_verified=True,
+                    vendor_organization_id=org.id,
+                    roles=[vendor_role]
+                )
+                db.add(u)
+                await db.flush()
+            else:
+                u.password_hash = get_password_hash("password123")
+                u.is_active = True
+                u.is_verified = True
+                u.vendor_organization_id = org.id
+                u.phone = vinfo["phone"]
+                if vendor_role not in u.roles:
+                    u.roles.append(vendor_role)
 
         # Admin User
         res = await db.execute(select(User).options(selectinload(User.roles)).where(User.email == "admin@test.com"))
@@ -153,7 +183,9 @@ async def seed():
         await db.commit()
         print("Successfully seeded users and permissions:")
         print(" - admin@test.com / password123 (Roles: ADMIN, Procurement Admin)")
-        print(" - vendor_a@test.com / password123 (Role: VENDOR, Org: Vendor A Test [APPROVED])")
+        for vinfo in vendors_to_seed:
+            print(f" - {vinfo['email']} / password123 (Role: VENDOR, Org: {vinfo['org_name']} [APPROVED])")
 
 if __name__ == "__main__":
     asyncio.run(seed())
+

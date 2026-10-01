@@ -158,6 +158,7 @@ export default function ComparativeStatementPage() {
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
 
   // View filter
   const [showShortlistedOnly, setShowShortlistedOnly] = useState(false);
@@ -334,6 +335,26 @@ export default function ComparativeStatementPage() {
     }
   };
 
+  const handleSimulateBids = async () => {
+    setIsSimulating(true);
+    try {
+      const res = await fetchApi(`/api/v1/admin/boq/${boqId}/simulate-dummy-bids`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to simulate bids.");
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      await loadComparativeData();
+    } catch (err: any) {
+      alert("Error simulating bids: " + (err.message || "Failed"));
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
   const openDisqualifyModal = (vendor: VendorMeta) => {
     setDisqualifyTarget(vendor);
     setDisqualifyNote(vendor.disqualification_note || "");
@@ -488,6 +509,17 @@ export default function ComparativeStatementPage() {
               <span>{isAuditing ? "Auditing Specifications..." : "Re-run AI Spec Audit"}</span>
             </button>
           )}
+
+          {/* Rapid Test Button: Simulate 3 Vendor Bids */}
+          <button
+            onClick={handleSimulateBids}
+            disabled={isSimulating}
+            className="inline-flex items-center space-x-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition-all disabled:opacity-50 shadow-sm shadow-violet-200"
+            title="Rapid Test: Automatically simulate and submit sealed bids from 3 vendors (Inox, Linde, Wilson)"
+          >
+            <span>{isSimulating ? "⏳" : "⚡"}</span>
+            <span>{isSimulating ? "Simulating Bids..." : "Simulate 3 Vendor Bids"}</span>
+          </button>
 
           {/* Download Split Button */}
           <div className="relative">
