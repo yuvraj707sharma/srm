@@ -919,162 +919,186 @@ async def download_boq_template(
 async def simulate_dummy_bids(
     boq_id: str,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin_or_token)
 ):
     """
     Rapid Testing Utility:
     Instantly generates and submits 3 realistic vendor bids (Inox Air Products, Linde India, Wilson Gases)
     for this BOQ so administrators can test the Comparative Statement without manual multi-account entry.
     """
-    stmt = select(BOQ).options(selectinload(BOQ.items)).where(BOQ.id == boq_id)
-    res = await db.execute(stmt)
-    boq = res.scalar_one_or_none()
-    if not boq:
-        raise HTTPException(status_code=404, detail="BOQ not found")
+    try:
+        stmt = select(BOQ).options(selectinload(BOQ.items)).where(BOQ.id == boq_id)
+        res = await db.execute(stmt)
+        boq = res.scalar_one_or_none()
+        if not boq:
+            raise HTTPException(status_code=404, detail="BOQ not found")
 
-    dummy_vendors = [
-        {
-            "name": "Inox Air Products Pvt Ltd",
-            "contact": "Akash (+91 9999596836)",
-            "model": "13 KL + 06 KL (BHIWADI)",
-            "tank": "13 KL + 06 KL (BHIWADI)",
-            "rate_multiplier": 0.95,
-            "payment_terms": "100% Advance",
-            "delivery_time": "8 Weeks to 10 Weeks",
-            "tenure": "10 Years",
-            "lock_in": "10 Years",
-            "civil_work": "Hospital Scope",
-            "price_esc": "Fixed for 2 years, 5% Y on Y Or Formula Based, whichever is lesser",
-            "mode_delivery": "Weighment Basis",
-            "min_volume": "will review after 2 years 6 months",
-        },
-        {
-            "name": "Linde India Ltd",
-            "contact": "Hardeep Singh (+91 9878219520)",
-            "model": "20 KL, LUDHIANA (400km)",
-            "tank": "20 KL, LUDHIANA (400km)",
-            "rate_multiplier": 1.05,
-            "payment_terms": "100% After Completion",
-            "delivery_time": "8 to 12 Weeks",
-            "tenure": "5 Years",
-            "lock_in": "5 Years",
-            "civil_work": "Hospital Scope",
-            "price_esc": "6% Y on Y Or Formula Based, whichever is lesser",
-            "mode_delivery": "Weighment Basis",
-            "min_volume": "40000M3",
-        },
-        {
-            "name": "Wilson Gases & Healthcare",
-            "contact": "Utkarsh (+91 8385058000)",
-            "model": "13KL + 06 KL (Jaipur)",
-            "tank": "13KL + 06 KL (Jaipur)",
-            "rate_multiplier": 1.12,
-            "payment_terms": "100% Advance",
-            "delivery_time": "8 Weeks to 10 Weeks",
-            "tenure": "7 Years",
-            "lock_in": "5 Years",
-            "civil_work": "Hospital Scope",
-            "price_esc": "NIL",
-            "mode_delivery": "Weighment Basis",
-            "min_volume": "12000M3",
-        },
-    ]
-
-    created_submissions = []
-
-    for vdata in dummy_vendors:
-        # Find or create vendor org
-        stmt_org = select(VendorOrganization).where(VendorOrganization.legal_name == vdata["name"])
-        res_org = await db.execute(stmt_org)
-        org = res_org.scalars().first()
-        if not org:
-            org = VendorOrganization(
-                legal_name=vdata["name"],
-                trade_name=vdata["name"],
-                organization_type="Private Limited",
-                country="India",
-                status="APPROVED",
-                verification_status="VERIFIED"
-            )
-            db.add(org)
+        # If BOQ has no line items, populate standard LMO items so comparative statement works
+        if not boq.items:
+            default_items = [
+                BOQItem(boq_id=boq.id, item_code="ITEM-001", item_name="Basic Price for LMO (Monthly)", quantity=13000.0, uom="SM3", target_price=11.80),
+                BOQItem(boq_id=boq.id, item_code="ITEM-002", item_name="Delivery/Transportation Charges (Monthly)", quantity=13000.0, uom="SM3", target_price=2.89),
+                BOQItem(boq_id=boq.id, item_code="ITEM-003", item_name="Fixed Facility Charges", quantity=12.0, uom="Monthly", target_price=15000.0),
+                BOQItem(boq_id=boq.id, item_code="ITEM-004", item_name="One time Asset Installation & Commissioning Charges (SITC)", quantity=1.0, uom="Nos", target_price=150000.0),
+                BOQItem(boq_id=boq.id, item_code="ITEM-005", item_name="PESO License work Fee (Govt.) for 5 years", quantity=1.0, uom="One time", target_price=200000.0),
+            ]
+            for it in default_items:
+                db.add(it)
             await db.flush()
+            # Refresh boq items
+            stmt = select(BOQ).options(selectinload(BOQ.items)).where(BOQ.id == boq_id)
+            res = await db.execute(stmt)
+            boq = res.scalar_one_or_none()
 
-        # Check if submission already exists
-        stmt_sub = select(BOQSubmission).options(selectinload(BOQSubmission.items)).where(
-            BOQSubmission.boq_id == boq_id,
-            BOQSubmission.vendor_organization_id == org.id
-        )
-        res_sub = await db.execute(stmt_sub)
-        sub = res_sub.scalar_one_or_none()
-        
-        if not sub:
-            sub = BOQSubmission(
-                boq_id=boq_id,
-                vendor_organization_id=org.id,
-                status="SUBMITTED",
-                submission_type="MANUAL",
-                submitted_at=datetime.now(timezone.utc),
-                payment_terms=vdata["payment_terms"],
-                delivery_time=vdata["delivery_time"],
-                model_no=vdata["model"],
-                tank_capacity_location=vdata["tank"],
-            )
-            db.add(sub)
-            await db.flush()
-        else:
-            sub.status = "SUBMITTED"
-            sub.submitted_at = datetime.now(timezone.utc)
-            sub.payment_terms = vdata["payment_terms"]
-            sub.delivery_time = vdata["delivery_time"]
-            sub.model_no = vdata["model"]
-            sub.tank_capacity_location = vdata["tank"]
+        dummy_vendors = [
+            {
+                "name": "Inox Air Products Pvt Ltd",
+                "contact": "Akash (+91 9999596836)",
+                "model": "13 KL + 06 KL (BHIWADI)",
+                "tank": "13 KL + 06 KL (BHIWADI)",
+                "rate_multiplier": 0.95,
+                "payment_terms": "100% Advance",
+                "delivery_time": "8 Weeks to 10 Weeks",
+                "tenure": "10 Years",
+                "lock_in": "10 Years",
+                "civil_work": "Hospital Scope",
+                "price_esc": "Fixed for 2 years, 5% Y on Y Or Formula Based, whichever is lesser",
+                "mode_delivery": "Weighment Basis",
+                "min_volume": "will review after 2 years 6 months",
+            },
+            {
+                "name": "Linde India Ltd",
+                "contact": "Hardeep Singh (+91 9878219520)",
+                "model": "20 KL, LUDHIANA (400km)",
+                "tank": "20 KL, LUDHIANA (400km)",
+                "rate_multiplier": 1.05,
+                "payment_terms": "100% After Completion",
+                "delivery_time": "8 to 12 Weeks",
+                "tenure": "5 Years",
+                "lock_in": "5 Years",
+                "civil_work": "Hospital Scope",
+                "price_esc": "6% Y on Y Or Formula Based, whichever is lesser",
+                "mode_delivery": "Weighment Basis",
+                "min_volume": "40000M3",
+            },
+            {
+                "name": "Wilson Gases & Healthcare",
+                "contact": "Utkarsh (+91 8385058000)",
+                "model": "13KL + 06 KL (Jaipur)",
+                "tank": "13KL + 06 KL (Jaipur)",
+                "rate_multiplier": 1.12,
+                "payment_terms": "100% Advance",
+                "delivery_time": "8 Weeks to 10 Weeks",
+                "tenure": "7 Years",
+                "lock_in": "5 Years",
+                "civil_work": "Hospital Scope",
+                "price_esc": "NIL",
+                "mode_delivery": "Weighment Basis",
+                "min_volume": "12000M3",
+            },
+        ]
 
-        # Populate submission items
-        existing_items_map = {item.boq_item_id: item for item in sub.items} if sub.items else {}
-        sub_total = 0.0
-        total_gst = 0.0
+        created_submissions = []
 
-        for idx, boq_item in enumerate(boq.items, start=1):
-            base_rate = boq_item.target_price or (12.0 * idx if boq_item.quantity > 100 else 15000.0)
-            unit_price = round(base_rate * vdata["rate_multiplier"], 2)
-            gst_pct = 5.0 if ("gas" in boq_item.item_name.lower() or "lmo" in boq_item.item_name.lower() or "transport" in boq_item.item_name.lower()) else 18.0
-            line_tot = round(unit_price * boq_item.quantity, 2)
-            line_gst = round(line_tot * (gst_pct / 100.0), 2)
-
-            sub_total += line_tot
-            total_gst += line_gst
-
-            if boq_item.id in existing_items_map:
-                s_item = existing_items_map[boq_item.id]
-                s_item.quoted_unit_price = unit_price
-                s_item.total_amount = line_tot
-                s_item.gst_percent = gst_pct
-                s_item.gst_amount = line_gst
-                s_item.technical_compliance = "COMPLIANT"
-            else:
-                s_item = BOQSubmissionItem(
-                    submission_id=sub.id,
-                    boq_item_id=boq_item.id,
-                    quoted_unit_price=unit_price,
-                    total_amount=line_tot,
-                    gst_percent=gst_pct,
-                    gst_amount=line_gst,
-                    technical_compliance="COMPLIANT"
+        for vdata in dummy_vendors:
+            # Find or create vendor org
+            stmt_org = select(VendorOrganization).where(VendorOrganization.legal_name == vdata["name"])
+            res_org = await db.execute(stmt_org)
+            org = res_org.scalars().first()
+            if not org:
+                org = VendorOrganization(
+                    legal_name=vdata["name"],
+                    trade_name=vdata["name"],
+                    organization_type="Private Limited",
+                    country="India",
+                    status="APPROVED",
+                    verification_status="VERIFIED"
                 )
-                db.add(s_item)
+                db.add(org)
+                await db.flush()
 
-        sub.sub_total = sub_total
-        sub.gst_amount = total_gst
-        sub.grand_total = sub_total + total_gst
-        created_submissions.append(vdata["name"])
+            # Check if submission already exists
+            stmt_sub = select(BOQSubmission).options(selectinload(BOQSubmission.items)).where(
+                BOQSubmission.boq_id == boq_id,
+                BOQSubmission.vendor_organization_id == org.id
+            )
+            res_sub = await db.execute(stmt_sub)
+            sub = res_sub.scalar_one_or_none()
+            
+            if not sub:
+                sub = BOQSubmission(
+                    boq_id=boq_id,
+                    vendor_organization_id=org.id,
+                    status="SUBMITTED",
+                    submission_type="MANUAL",
+                    submitted_at=datetime.now(timezone.utc),
+                    payment_terms=vdata["payment_terms"],
+                    delivery_time=vdata["delivery_time"],
+                    model_no=vdata["model"],
+                    tank_capacity_location=vdata["tank"],
+                )
+                db.add(sub)
+                await db.flush()
+            else:
+                sub.status = "SUBMITTED"
+                sub.submitted_at = datetime.now(timezone.utc)
+                sub.payment_terms = vdata["payment_terms"]
+                sub.delivery_time = vdata["delivery_time"]
+                sub.model_no = vdata["model"]
+                sub.tank_capacity_location = vdata["tank"]
 
-    await db.commit()
+            # Populate submission items
+            existing_items_map = {item.boq_item_id: item for item in sub.items} if sub.items else {}
+            sub_total = 0.0
+            total_gst = 0.0
 
-    return {
-        "status": "success",
-        "message": f"Successfully simulated 3 vendor bids: {', '.join(created_submissions)}",
-        "vendors": created_submissions
-    }
+            for idx, boq_item in enumerate(boq.items, start=1):
+                base_rate = boq_item.target_price or (12.0 * idx if (boq_item.quantity or 1.0) > 100 else 15000.0)
+                unit_price = round(base_rate * vdata["rate_multiplier"], 2)
+                item_name_str = (boq_item.item_name or "").lower()
+                gst_pct = 5.0 if ("gas" in item_name_str or "lmo" in item_name_str or "transport" in item_name_str) else 18.0
+                qty = float(boq_item.quantity or 1.0)
+                line_tot = round(unit_price * qty, 2)
+                line_gst = round(line_tot * (gst_pct / 100.0), 2)
+
+                sub_total += line_tot
+                total_gst += line_gst
+
+                if boq_item.id in existing_items_map:
+                    s_item = existing_items_map[boq_item.id]
+                    s_item.quoted_unit_price = unit_price
+                    s_item.total_amount = line_tot
+                    s_item.gst_percent = gst_pct
+                    s_item.gst_amount = line_gst
+                    s_item.technical_compliance = "COMPLIANT"
+                else:
+                    s_item = BOQSubmissionItem(
+                        submission_id=sub.id,
+                        boq_item_id=boq_item.id,
+                        quoted_unit_price=unit_price,
+                        total_amount=line_tot,
+                        gst_percent=gst_pct,
+                        gst_amount=line_gst,
+                        technical_compliance="COMPLIANT"
+                    )
+                    db.add(s_item)
+
+            sub.sub_total = sub_total
+            sub.gst_amount = total_gst
+            sub.grand_total = sub_total + total_gst
+            created_submissions.append(vdata["name"])
+
+        await db.commit()
+
+        return {
+            "status": "success",
+            "message": f"Successfully simulated 3 vendor bids: {', '.join(created_submissions)}",
+            "vendors": created_submissions
+        }
+    except Exception as e:
+        logger.error(f"Error simulating dummy bids: {e}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to simulate bids: {str(e)}")
 
 
 # -------------------------------------------------------------------------
