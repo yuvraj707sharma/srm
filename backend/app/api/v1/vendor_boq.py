@@ -55,6 +55,7 @@ class BidSubmissionPayload(BaseModel):
     payment_terms: Optional[str] = None
     delivery_time: Optional[str] = None
     warranty_terms: Optional[str] = None
+    is_draft: Optional[bool] = False
 
 
 # -------------------------------------------------------------------------
@@ -187,7 +188,8 @@ async def get_tender_detail(
     # Vendor submission
     sub = next((s for s in boq.submissions if s.vendor_organization_id == vendor_org_id), None)
     submission_data = None
-    is_locked = is_deadline_passed or (sub is not None and sub.status == "SUBMITTED")
+    is_locked = is_deadline_passed
+    can_revise = (not is_deadline_passed) and (sub is not None and sub.status == "SUBMITTED")
 
     if sub:
         submission_data = {
@@ -214,7 +216,9 @@ async def get_tender_detail(
                     "total_amount": si.total_amount,
                     "make_model_quoted": si.make_model_quoted,
                     "technical_compliance": si.technical_compliance,
-                    "vendor_remarks": si.vendor_remarks
+                    "vendor_remarks": si.vendor_remarks,
+                    "gst_percent": getattr(si, "gst_percent", 18.0) if getattr(si, "gst_percent", None) is not None else 18.0,
+                    "gst_amount": getattr(si, "gst_amount", 0.0) if getattr(si, "gst_amount", None) is not None else 0.0,
                 }
                 for si in sub.items
             ]
@@ -232,6 +236,7 @@ async def get_tender_detail(
         "deadline_at": boq.deadline_at.isoformat() if boq.deadline_at else None,
         "is_deadline_passed": is_deadline_passed,
         "is_locked": is_locked,
+        "can_revise": can_revise,
         "remaining_seconds": max(0, remaining_seconds),
         "allow_download": boq.allow_download,
         "document_version_id": boq.document_version_id,
@@ -312,16 +317,12 @@ async def submit_manual_bid(
         if now > deadline:
             raise HTTPException(
                 status_code=400, 
-                detail="Tender submission deadline has passed. Submissions are strictly locked."
+                detail="Tender submission deadline has passed. Submissions are strictly locked for evaluation."
             )
 
-    # 2. Enforce 1-time submission lock
+    # 2. Check existing submission
     existing_sub = next((s for s in boq.submissions if s.vendor_organization_id == vendor_org_id), None)
-    if existing_sub and existing_sub.status == "SUBMITTED":
-        raise HTTPException(
-            status_code=400, 
-            detail="Your quotation has already been submitted and is permanently locked against further edits."
-        )
+    was_previously_submitted = existing_sub is not None and existing_sub.status == "SUBMITTED"
 
     # Map items
     boq_items_map = {item.id: item for item in boq.items}
@@ -349,7 +350,7 @@ async def submit_manual_bid(
     gst_pct = 0.0 # Replaced by line-level GST, zeroing out global indicator
     grand_tot = sub_total + gst_amt
 
-    # Create submission and lock it
+    # Create submission or update
     if not existing_sub:
         existing_sub = BOQSubmission(
             boq_id=boq.id,
@@ -359,14 +360,15 @@ async def submit_manual_bid(
         db.add(existing_sub)
         await db.flush()
     else:
-        # Clear previous draft items if any
+        # Clear previous items if any
         stmt_del = select(BOQSubmissionItem).where(BOQSubmissionItem.submission_id == existing_sub.id)
         old_items = (await db.execute(stmt_del)).scalars().all()
         for oi in old_items:
             await db.delete(oi)
 
-    existing_sub.status = "SUBMITTED"
-    existing_sub.submitted_at = now
+    is_draft = bool(payload.is_draft)
+    existing_sub.status = "DRAFT" if is_draft else "SUBMITTED"
+    existing_sub.submitted_at = None if is_draft else now
     existing_sub.submission_type = "MANUAL"
     existing_sub.sub_total = sub_total
     existing_sub.gst_percent = gst_pct
@@ -392,12 +394,57 @@ async def submit_manual_bid(
 
     await db.commit()
 
+    if is_draft:
+        message = "Draft quotation saved successfully. You can return and complete it anytime before the deadline."
+    elif was_previously_submitted:
+        message = "Revised quotation submitted successfully! You can make further adjustments anytime before the tender closes."
+    else:
+        message = "Quotation submitted successfully! You can revise your quote anytime before the tender closes."
+
     return {
         "status": "success",
-        "message": "Bid submitted successfully and permanently locked.",
+        "is_draft": is_draft,
+        "message": message,
         "submission_id": existing_sub.id,
         "grand_total": grand_tot,
-        "submitted_at": now.isoformat()
+        "submitted_at": now.isoformat() if not is_draft else None
+    }
+
+
+@router.post("/{boq_id}/parse-bid-file")
+async def parse_vendor_bid_file_preview(
+    boq_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    vendor_org_id: str = Depends(get_vendor_org_id)
+):
+    """
+    Parses an uploaded quotation file (Excel or PDF) and returns the extracted rates and terms
+    WITHOUT committing or locking to the database. Allows the vendor to preview and review
+    the parsed numbers in the interactive form before submitting.
+    """
+    stmt = (
+        select(BOQ)
+        .options(selectinload(BOQ.items))
+        .where(BOQ.id == boq_id)
+    )
+    res = await db.execute(stmt)
+    boq = res.scalar_one_or_none()
+    if not boq:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    file_bytes = await file.read()
+    try:
+        parsed_bid = await parse_vendor_submission_file(boq, file_bytes, file.filename)
+    except Exception as e:
+        logger.error(f"Failed to preview parse bid file {file.filename}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to parse quotation file: {str(e)}")
+
+    return {
+        "status": "success",
+        "filename": file.filename,
+        "parsed_bid": parsed_bid
     }
 
 
@@ -411,7 +458,8 @@ async def upload_bid_file(
 ):
     """
     Vendor uploads completed Excel bidding sheet or signed PDF quotation.
-    Gemini AI parses quotes, maps them to line items, and immediately locks the submission.
+    Gemini AI parses quotes, maps them to line items, and records the submission.
+    Allows revisions if the tender deadline has not passed.
     """
     stmt = (
         select(BOQ)
@@ -436,13 +484,8 @@ async def upload_bid_file(
                 detail="Tender submission deadline has passed. Submissions are strictly locked."
             )
 
-    # 2. Enforce 1-time submission lock
+    # 2. Check existing submission (revisions allowed before deadline)
     existing_sub = next((s for s in boq.submissions if s.vendor_organization_id == vendor_org_id), None)
-    if existing_sub and existing_sub.status == "SUBMITTED":
-        raise HTTPException(
-            status_code=400, 
-            detail="Your quotation has already been submitted and is permanently locked against further edits."
-        )
 
     file_bytes = await file.read()
     await file.seek(0)
@@ -531,6 +574,55 @@ async def upload_bid_file(
         "model_no": existing_sub.model_no,
         "tank_capacity_location": existing_sub.tank_capacity_location,
         "submitted_at": now.isoformat()
+    }
+
+
+@router.post("/{boq_id}/parse-bid-file")
+async def parse_bid_file_preview(
+    boq_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    vendor_org_id: str = Depends(get_vendor_org_id)
+):
+    """
+    Parse an Excel or PDF quotation file and return extracted rates/terms for preview/editing in the web form
+    without creating or locking a submission in the database.
+    """
+    stmt = (
+        select(BOQ)
+        .options(selectinload(BOQ.items))
+        .where(BOQ.id == boq_id)
+    )
+    res = await db.execute(stmt)
+    boq = res.scalar_one_or_none()
+    if not boq:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    # Enforce deadline
+    now = datetime.now(timezone.utc)
+    if boq.deadline_at:
+        deadline = boq.deadline_at if boq.deadline_at.tzinfo else boq.deadline_at.replace(tzinfo=timezone.utc)
+        if now > deadline:
+            raise HTTPException(
+                status_code=400, 
+                detail="Tender submission deadline has passed. Submissions are strictly locked."
+            )
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 7 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Uploaded quotation file exceeds maximum allowed limit of 7 MB.")
+
+    try:
+        parsed_bid = await parse_vendor_submission_file(boq, file_bytes, file.filename)
+    except Exception as e:
+        logger.error(f"Failed to parse quotation file preview {file.filename}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to extract quotes from file: {str(e)}")
+
+    return {
+        "status": "success",
+        "filename": file.filename,
+        "parsed_bid": parsed_bid
     }
 
 
