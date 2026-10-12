@@ -236,6 +236,99 @@ def _split_text_into_chunks(text: str, max_chunk_chars: int = 6000) -> List[str]
     return chunks if chunks else [text]
 
 
+def _fallback_heuristic_extraction(raw_text: str) -> List[Dict[str, Any]]:
+    """
+    Deterministic rule-based extractor that recovers line items from tables, bullet points,
+    or equipment keywords if Gemini AI is unavailable, unauthenticated, or rate-limited.
+    """
+    items = []
+    lines = raw_text.split("\n")
+    in_table = False
+    table_headers = []
+
+    # 1. Parse tables
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped == "--- TABLE ---":
+            in_table = True
+            table_headers = []
+            continue
+        if stripped.startswith("--- ") and stripped.endswith(" ---"):
+            in_table = False
+            continue
+
+        if in_table and "\t" in stripped:
+            cols = [c.strip() for c in stripped.split("\t") if c.strip()]
+            if not table_headers:
+                table_headers = cols
+                continue
+            if len(cols) >= 2:
+                name = cols[1] if (cols[0].isdigit() or cols[0].endswith(".")) else cols[0]
+                qty = 1.0
+                uom = "Nos"
+                for c in cols[1:]:
+                    try:
+                        clean_num = float(re.sub(r'[^\d.]', '', c))
+                        if clean_num > 0 and qty == 1.0:
+                            qty = clean_num
+                    except Exception:
+                        if c.lower() in ["nos", "set", "lot", "job", "sm3", "mtrs", "kg", "kl", "monthly", "one time"]:
+                            uom = c
+                if len(name) > 2 and not name.lower().startswith("total"):
+                    items.append({
+                        "item_code": f"ITEM-{len(items)+1:03d}",
+                        "item_name": name,
+                        "specifications": " / ".join(cols),
+                        "quantity": qty,
+                        "uom": uom,
+                        "category": "Extracted Table",
+                        "attributes": {}
+                    })
+
+    # 2. Parse component headings, deliverables, or bullet points
+    if len(items) < 3:
+        component_keywords = [
+            "tank", "vaporizer", "pressure", "manifold", "pipeline", "valve", 
+            "alarm", "plant", "compressor", "vacuum", "panel", "license", "foundation",
+            "civil", "testing", "commissioning", "supply", "installation", "setup", "pump", "generator", "oxygen"
+        ]
+        seen_names = set()
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or len(stripped) < 4 or len(stripped) > 140:
+                continue
+            is_bullet = stripped.startswith(("-", "•", "*")) or bool(re.match(r'^\d+[\.\)]\s+', stripped))
+            has_keyword = any(k in stripped.lower() for k in component_keywords)
+
+            if is_bullet or has_keyword:
+                clean_name = re.sub(r'^[\d\.\)\-\•\*\s]+', '', stripped).strip()
+                if clean_name and clean_name.lower() not in seen_names and len(clean_name) >= 4:
+                    if clean_name.lower() in ["system components", "plant room requirements", "applicable standards", "objective", "why lmo?"]:
+                        continue
+                    seen_names.add(clean_name.lower())
+                    uom_guess = "Nos"
+                    if any(w in clean_name.lower() for w in ["system", "station", "manifold", "network", "bank"]):
+                        uom_guess = "Set"
+                    elif any(w in clean_name.lower() for w in ["work", "integration", "commissioning", "approval", "license"]):
+                        uom_guess = "Job"
+
+                    items.append({
+                        "item_code": f"ITEM-{len(items)+1:03d}",
+                        "item_name": clean_name,
+                        "specifications": stripped,
+                        "quantity": 1.0,
+                        "uom": uom_guess,
+                        "category": "Scope Package",
+                        "attributes": {}
+                    })
+                    if len(items) >= 30:
+                        break
+
+    return items
+
+
 async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -> Dict[str, Any]:
     """
     Sends document text to Gemini AI to extract normalized BOQ items and custom columns.
@@ -243,7 +336,15 @@ async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -
     """
     api_key = settings.GEMINI_API_KEY
     if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured in settings.")
+        logger.warning("GEMINI_API_KEY is not configured. Falling back to heuristic extractor.")
+        fallback_items = _fallback_heuristic_extraction(raw_text)
+        return {
+            "title": "Hospital Procurement BOQ",
+            "department": "Procurement & Operations",
+            "description": f"Extracted {len(fallback_items)} items from document scope.",
+            "custom_columns": [],
+            "items": fallback_items
+        }
 
     import asyncio
 
@@ -383,10 +484,16 @@ async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -
             "attributes": attrs
         })
 
+    if not normalized_items:
+        logger.warning("AI extraction yielded 0 items. Running heuristic fallback extractor to parse document structure...")
+        fallback_items = _fallback_heuristic_extraction(raw_text)
+        if fallback_items:
+            normalized_items = fallback_items
+
     return {
         "title": extracted_title or "Medical College & Hospital Procurement BOQ",
         "department": extracted_dept or "General Procurement",
-        "description": f"AI Extracted BOQ containing {len(normalized_items)} line items.",
+        "description": f"Extracted {len(normalized_items)} line items from document.",
         "custom_columns": list(custom_columns_set),
         "items": normalized_items
     }
