@@ -48,6 +48,7 @@ export default function CreateBOQPage() {
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   // Add column state
   const [showAddCol, setShowAddCol] = useState(false);
@@ -295,6 +296,15 @@ export default function CreateBOQPage() {
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-all disabled:opacity-50"
           >
             Save as Draft
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPreviewModal(true)}
+            disabled={uploading}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-300 transition-all flex items-center space-x-1.5 shadow-xs"
+          >
+            <span>👁️</span>
+            <span>Preview Tender</span>
           </button>
           <button
             onClick={() => handleSubmit(true)}
@@ -676,6 +686,15 @@ export default function CreateBOQPage() {
             Save Draft
           </button>
           <button
+            type="button"
+            onClick={() => setShowPreviewModal(true)}
+            disabled={uploading}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center space-x-1.5"
+          >
+            <span>👁️</span>
+            <span>Preview Tender</span>
+          </button>
+          <button
             onClick={() => handleSubmit(true)}
             disabled={publishing || uploading}
             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold rounded-xl transition-all shadow-md shadow-blue-900/40 flex items-center space-x-2"
@@ -691,6 +710,168 @@ export default function CreateBOQPage() {
           </button>
         </div>
       </div>
+
+      {/* Tender Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center space-x-3">
+                <span className="p-2 bg-blue-600/30 text-blue-400 rounded-xl text-lg">👁️</span>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs uppercase tracking-wider font-semibold text-blue-400">Pre-Publication Preview</span>
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono px-2 py-0.5 rounded-full border border-amber-500/30">DRAFT</span>
+                  </div>
+                  <h2 className="text-lg font-bold text-white tracking-tight">{title || "Untitled Tender"}</h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPreviewModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 text-lg transition-colors"
+                title="Close Preview"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Subheader / Metadata Stats */}
+            <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Tender Ref #</span>
+                <span className="font-mono font-bold text-slate-800">{tenderNumber || "Auto-assigned"}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Bidding Lock</span>
+                <span className="font-semibold text-slate-700">{deadlineDays} Days after publishing</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Valid Items</span>
+                <span className="font-bold text-blue-600">{items.filter(i => (i.item_name || "").trim()).length} Items</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Source Document</span>
+                <span className="font-medium text-slate-700 truncate block" title={uploadedFileName || "Manual Entry"}>
+                  {uploadedFileName ? `📄 ${uploadedFileName}` : "Direct Input"}
+                </span>
+              </div>
+            </div>
+
+            {description && (
+              <div className="px-6 py-2.5 bg-blue-50/50 border-b border-blue-100 text-xs text-slate-600 flex items-start space-x-2">
+                <span className="text-blue-500 font-bold mt-0.5">ℹ️</span>
+                <p className="line-clamp-2">{description}</p>
+              </div>
+            )}
+
+            {/* Modal Body - Items Table */}
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Itemized Technical Schedule</h3>
+                <span className="text-[11px] text-slate-400">This is exactly what invited vendors will bid against</span>
+              </div>
+
+              {items.filter(i => (i.item_name || "").trim()).length === 0 ? (
+                <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+                  No line items added yet. Please add items before previewing.
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
+                        <th className="p-2.5 text-center w-12">#</th>
+                        <th className="p-2.5 w-24">Item Code</th>
+                        <th className="p-2.5 min-w-[200px]">Item Description & Specifications</th>
+                        <th className="p-2.5 text-center w-20">Quantity</th>
+                        <th className="p-2.5 text-center w-16">UOM</th>
+                        {items.some(i => i.target_price) && (
+                          <th className="p-2.5 text-right w-24">Est. Rate</th>
+                        )}
+                        {customColumns.map(col => (
+                          <th key={col} className="p-2.5">{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {items
+                        .filter(i => (i.item_name || "").trim())
+                        .map((item, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-2.5 text-center font-mono text-slate-400 font-semibold">{idx + 1}</td>
+                            <td className="p-2.5 font-mono text-[11px] font-bold text-slate-600">{item.item_code || `ITM-${String(idx + 1).padStart(3, "0")}`}</td>
+                            <td className="p-2.5">
+                              <div className="font-bold text-slate-900">{item.item_name}</div>
+                              {item.specifications && (
+                                <div className="text-[11px] text-slate-500 mt-0.5 leading-relaxed whitespace-pre-wrap">{item.specifications}</div>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-center font-mono font-bold text-blue-700">{item.quantity}</td>
+                            <td className="p-2.5 text-center">
+                              <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium text-[10px] uppercase">{item.uom}</span>
+                            </td>
+                            {items.some(i => i.target_price) && (
+                              <td className="p-2.5 text-right font-mono text-slate-700 font-medium">
+                                {item.target_price ? `₹${item.target_price.toLocaleString("en-IN")}` : "-"}
+                              </td>
+                            )}
+                            {customColumns.map(col => (
+                              <td key={col} className="p-2.5 text-slate-600 text-[11px]">{item.attributes?.[col] || "-"}</td>
+                            ))}
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowPreviewModal(false)}
+                className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs"
+              >
+                ← Back to Edit
+              </button>
+              <div className="flex items-center space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    handleSubmit(false);
+                  }}
+                  disabled={publishing || uploading}
+                  className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                >
+                  Save as Draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    handleSubmit(true);
+                  }}
+                  disabled={publishing || uploading}
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 transition-all disabled:opacity-50 flex items-center space-x-2"
+                >
+                  {publishing ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Publishing...</span>
+                    </>
+                  ) : (
+                    <span>🚀 Confirm & Publish Live Now</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
