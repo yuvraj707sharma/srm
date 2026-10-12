@@ -493,13 +493,20 @@ async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -
     import asyncio
 
     client = genai.Client(api_key=api_key)
-    preferred_model = getattr(settings, "GEMINI_MODEL", "gemini-3.7-flash") or "gemini-3.7-flash"
-    candidates = [preferred_model, "gemini-3.7-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    preferred_model = getattr(settings, "GEMINI_MODEL", "gemini-3.8-flash") or "gemini-3.8-flash"
+    candidates = [
+        preferred_model,
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-3.0-flash",
+        "gemini-flash"
+    ]
     seen = set()
     models = [m for m in candidates if not (m in seen or seen.add(m))]
 
     chunks = _split_text_into_chunks(raw_text, max_chunk_chars=7500)
-    logger.info(f"BOQ document split into {len(chunks)} chunk(s) for concurrent extraction (Type: {boq_type}).")
+    logger.info(f"BOQ document split into {len(chunks)} chunk(s) for concurrent extraction (Type: {boq_type}). Models: {models}")
 
     def _process_chunk_sync(chunk_idx: int, chunk_text: str) -> Dict[str, Any]:
         prompt = f"Tender Type: {boq_type}. Please extract all BOQ line items and custom column attributes from this tender document section/chunk (Chunk {chunk_idx}/{len(chunks)}):\n\n{chunk_text}"
@@ -529,8 +536,7 @@ async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -
                 last_error = e
                 logger.warning(f"Chunk {chunk_idx} attempt {attempt + 1}/{max_retries} failed using {model_name}: {e}")
                 import time
-                time.sleep(1.5 * (attempt + 1))
-
+                time.sleep(1.0 * (attempt + 1))
 
         if not response_text:
             logger.error(f"Chunk {chunk_idx} extraction failed after {max_retries} attempts: {last_error}")
@@ -569,11 +575,15 @@ async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -
             return {}
 
     # Run chunk processing concurrently in parallel using worker threads
-    tasks = [
-        asyncio.to_thread(_process_chunk_sync, chunk_idx, chunk)
-        for chunk_idx, chunk in enumerate(chunks, start=1)
-    ]
-    results = await asyncio.gather(*tasks)
+    results = []
+    try:
+        tasks = [
+            asyncio.to_thread(_process_chunk_sync, chunk_idx, chunk)
+            for chunk_idx, chunk in enumerate(chunks, start=1)
+        ]
+        results = await asyncio.gather(*tasks)
+    except Exception as gather_err:
+        logger.warning(f"Async extraction gather warning: {gather_err}. Proceeding with fallback parsing.")
 
     all_raw_items = []
     custom_columns_set = set()

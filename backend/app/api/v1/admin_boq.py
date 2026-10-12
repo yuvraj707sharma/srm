@@ -179,14 +179,19 @@ async def extract_boq_from_file(
         content_bytes = await file.read()
         await file.seek(0)
         
-        # 1. Save uploaded file to Document storage
-        doc_service = DocumentService(db, LocalStorageService())
-        doc_version = await doc_service.upload_document(
-            vendor_organization_id=None,
-            document_type="BOQ_ADMIN_SOURCE",
-            file=file,
-            uploaded_by_user_id=admin.id
-        )
+        # 1. Save uploaded file to Document storage (safe fallback)
+        doc_version_id = None
+        try:
+            doc_service = DocumentService(db, LocalStorageService())
+            doc_version = await doc_service.upload_document(
+                vendor_organization_id=None,
+                document_type="BOQ_ADMIN_SOURCE",
+                file=file,
+                uploaded_by_user_id=admin.id
+            )
+            doc_version_id = doc_version.id
+        except Exception as doc_err:
+            logger.warning(f"Could not persist uploaded BOQ file to document storage: {doc_err}")
         
         # 2. Extract content text
         raw_text = extract_content_from_file(content_bytes, file.filename)
@@ -198,7 +203,7 @@ async def extract_boq_from_file(
         return {
             "status": "success",
             "filename": file.filename,
-            "document_version_id": doc_version.id,
+            "document_version_id": doc_version_id,
             "boq_type": boq_type,
             "data": extracted_data
         }

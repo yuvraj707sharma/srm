@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     
     DATABASE_URL: str
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-3.7-flash"
+    GEMINI_MODEL: str = "gemini-3.8-flash"
     GEMINI_MAX_INPUT_CHARS: int = 4_000_000  # ~1M tokens; supports 100+ page PDFs
     GEMINI_TIMEOUT: int = 180             # Longer timeout for large catalogs
     GEMINI_MAX_RETRIES: int = 3           # transient-error retries inside GeminiService
