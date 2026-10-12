@@ -343,7 +343,7 @@ export default function CreateBOQPage() {
           <span>1. Tender Details</span>
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2 space-y-1">
             <label className="text-xs font-bold text-slate-700">Tender Title <span className="text-red-500">*</span></label>
             <input
@@ -353,41 +353,6 @@ export default function CreateBOQPage() {
               placeholder="e.g., Procurement of Liquid Medical Oxygen (LMO) Plant"
               className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium"
             />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700">Department <span className="text-slate-400 font-normal text-[11px]">(Optional)</span></label>
-            <input
-              type="text"
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              placeholder="e.g., Operations / Procurement (Optional)"
-              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700">Evaluation Paradigm</label>
-            <div className="flex rounded-xl p-1 bg-slate-100 border border-slate-200 text-xs">
-              <button
-                type="button"
-                onClick={() => setBoqType("COMMERCIAL")}
-                className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
-                  boqType === "COMMERCIAL" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                🧪 Commercial Rates (LMO)
-              </button>
-              <button
-                type="button"
-                onClick={() => setBoqType("TECHNICAL")}
-                className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
-                  boqType === "TECHNICAL" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                ⚙️ Technical Specs First
-              </button>
-            </div>
           </div>
 
           <div className="space-y-1">

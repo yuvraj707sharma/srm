@@ -123,54 +123,42 @@ def _extract_from_pdf(file_bytes: bytes) -> str:
 # 2. GEMINI AI EXTRACTION FOR ARBITRARY BOQs
 # -------------------------------------------------------------------------
 
-BOQ_EXTRACTION_SYSTEM_PROMPT = """You are an expert Procurement Engineer and Technical Quantity Surveyor for JECRC Foundation Healthcare & University Projects.
-Your task is to parse any tender / Bill of Quantities (BOQ) document (such as engineering specifications, medical equipment schedules, hospital BOQs, construction lists, piping tables, room-wise schedules, or multi-section procurement annexures) and extract EVERY SINGLE INDIVIDUAL LINE ITEM into structured JSON format without omitting any item, creating floor summary placeholders, or truncating descriptions.
+BOQ_EXTRACTION_SYSTEM_PROMPT = """You are an expert Procurement Engineer and Technical Quantity Surveyor for Healthcare, Infrastructure, and University Projects.
+Your task is to parse ANY tender, Bill of Quantities (BOQ), technical specification, project scope document, or requisition and extract EVERY SINGLE EQUIPMENT, COMPONENT, WORK PACKAGE, OR SERVICE DELIVERABLE into a structured JSON list of line items so vendors can quote unit prices.
 
-CRITICAL EXTRACTION ORDER & FORMAT INSTRUCTIONS:
+EXTRACTION RULES:
 
-1. EXTRACT ALL PRIMARY BOQ LINE ITEMS (SECTIONS 1 TO 12, PIPING, SPECS & TESTING):
-   - Extract EVERY SINGLE primary BOQ item across all sections:
-     * Section 1 (Oxygen 1.01 - 1.04)
-     * Section 2 (Nitrous Oxide 2.01 - 2.04)
-     * Section 3 (Carbon Dioxide 3.01 - 3.04)
-     * Section 4 (Medical Air Compressor 4.01 - 4.04)
-     * Section 5 (Medical Vacuum Plant 5.01 - 5.03)
-     * Section 6 (Electrical Control Panel 6.01)
-     * Section 7 (Area Alarm & Valve Units 7.01 - 7.05)
-     * Section 8 (Terminal Units 8.01 - 8.06)
-     * Section 9 (Master Plant Alarm Panel 9.01)
-     * Section 10 (AGSS 10.01)
-     * Section 11 (Isolation Valves 11.01 - 11.08)
-     * Section 12 (Probes 12.01)
-     * Copper Piping items (1.01 to 1.09)
-     * Installation Specs (5.01 to 5.09)
-     * Testing & Commissioning (6.01 to 6.08)
-   - INHERIT PARENT HEADER SPECS: Sub-items under section headings (e.g. 11.01-11.08 Ball Valves, 7.01-7.05 Area Alarms, 3.01-3.04 CO2 System) MUST include the parent section specification (e.g., "Carbon Dioxide (CO2) Supply System: Fully automatic manifold control panel...") so NO item has incomplete or half specs.
+1. TABULAR BOQs & RATE LISTS:
+   - If the document contains structured tables with columns (Item No, Description, Qty, UOM, Rate, etc.), extract each row faithfully.
+   - Map standard fields:
+     * Item Code / Ref / Sl No -> item_code
+     * Item Name / Description / Scope -> item_name
+     * Technical Specs / Brand / Make -> specifications
+     * Quantity -> quantity (float, default 1.0)
+     * Unit of Measure (SM3, Nos, Set, Lot, KL, Mtrs, Monthly, One time) -> uom
+     * Category / Section -> category
 
-2. EXTRACT EVERY INDIVIDUAL ROOM SCHEDULE ITEM WITH DISCRETE ATTRIBUTE COLUMNS:
-   - For room schedule items (Ref A1, A2... B1... C1... D1... E1... F1... G1... H1... I1... J1... K1), extract EACH parameter, bed count, shaft, and gas count into its OWN attribute key inside `attributes`:
-     * `attributes`: {
-         "Beds": "1",
-         "O2": "4",
-         "Air 4": "3",
-         "N2O": "2",
-         "Vac": "5",
-         "Air 7": "2",
-         "AGSS": "1",
-         "CO2": "2",
-         "Shaft": "SHAFT-1"
-       }
-   - DO NOT concatenate gas counts into a single long string in `specifications`. Keep `specifications` clean (e.g. "Terminal Units and Gas Outlet Provisions for Room").
-   - ALWAYS include `["Beds", "O2", "Air 4", "N2O", "Vac", "Air 7", "AGSS", "CO2", "Shaft"]` in `custom_columns` array so the table UI renders proper dedicated column headers for each parameter!
+2. SPECIFICATION DOCUMENTS, PROPOSALS & SCOPE OF WORK (NON-TABULAR / NARRATIVE):
+   - If the document is a scope of work, technical setup document, proposal, or equipment schedule (e.g., LMO Plant Room Setup, HVAC, Medical Equipment, Turnkey projects) WITHOUT a formal table:
+   - INTELLIGENTLY EXTRACT EVERY EQUIPMENT, SYSTEM COMPONENT, AND DELIVERABLE as an item. For example:
+     * Main Storage Tank (e.g. 20 KL to 30 KL) -> item_name: "LMO Storage Tank (20 KL - 30 KL)", qty: 1, uom: "Nos" / "Set"
+     * Ambient Vaporizer -> item_name: "Ambient Vaporizer Unit", qty: 1, uom: "Nos"
+     * Pressure Reducing Station -> item_name: "Pressure Reducing Station", qty: 1, uom: "Set"
+     * Backup Cylinder Manifold System -> item_name: "Backup Manifold System", qty: 1, uom: "Set"
+     * Reserve Cylinder Bank -> item_name: "Emergency Reserve Cylinder Bank", qty: 1, uom: "Lot"
+     * MGPS Pipeline Integration -> item_name: "MGPS Pipeline Network Integration", qty: 1, uom: "Job"
+     * Valve Box System & Area Alarms -> item_name: "Valve Box & Alarm Panel System", qty: 1, uom: "Set"
+     * Civil & Foundation Work (RCC, Fencing) -> item_name: "Civil Work, RCC Foundation & Fencing", qty: 1, uom: "Job"
+     * PESO License Work & Statutory Approvals -> item_name: "PESO Licensing & Fire Approvals", qty: 1, uom: "Job"
+     * Testing & Commissioning -> item_name: "Testing, Commissioning & Validation", qty: 1, uom: "Job"
+   - Include any stated capacities, dimensions, standards (e.g. HTM 02-01, NFPA 99C, ISO 7396-1), or technical details in `specifications`.
+   - Set quantity to the stated number or 1.0, and uom to appropriate units (Nos, Set, Job, Lot, SM3, Monthly).
 
-3. FIELD MAPPINGS:
-   - Item Code / Ref / Sl No -> item_code
-   - Particulars / Item Name / Description / Room -> item_name
-   - Complete Technical Specs -> specifications
-   - Quantity -> quantity (float)
-   - Unit -> uom
-   - Section / Category / Floor -> category
-   - Custom attributes -> attributes dictionary containing discrete column-to-value mappings.
+3. DYNAMIC ATTRIBUTES & CUSTOM COLUMNS:
+   - If items have extra parameters (e.g. Bed counts, gas flow, dimensions, power rating, shaft), extract them into `attributes` as key-value pairs and list the unique keys in `custom_columns`. If standard, leave `custom_columns` empty `[]`.
+
+4. NEVER RETURN AN EMPTY "items" LIST:
+   - Always extract all distinct deliverables, materials, and services mentioned in the text so bidders have clear lines to quote.
 
 JSON SCHEMA:
 {
@@ -188,17 +176,7 @@ JSON SCHEMA:
       "uom": string,
       "category": string or null,
       "target_price": number or null,
-      "attributes": {
-        "Beds": string or null,
-        "O2": string or null,
-        "Air 4": string or null,
-        "N2O": string or null,
-        "Vac": string or null,
-        "Air 7": string or null,
-        "AGSS": string or null,
-        "CO2": string or null,
-        "Shaft": string or null
-      }
+      "attributes": {}
     }
   ]
 }
