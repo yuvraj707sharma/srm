@@ -349,8 +349,8 @@ async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -
     import asyncio
 
     client = genai.Client(api_key=api_key)
-    preferred_model = getattr(settings, "GEMINI_MODEL", "gemini-3.5-flash") or "gemini-3.5-flash"
-    candidates = [preferred_model, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    preferred_model = getattr(settings, "GEMINI_MODEL", "gemini-3.7-flash") or "gemini-3.7-flash"
+    candidates = [preferred_model, "gemini-3.7-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     seen = set()
     models = [m for m in candidates if not (m in seen or seen.add(m))]
 
