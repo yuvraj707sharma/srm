@@ -89,11 +89,33 @@ def _extract_from_excel(file_bytes: bytes) -> str:
 def _extract_from_pdf(file_bytes: bytes) -> str:
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     lines = []
+    total_chars = 0
     for page_idx in range(len(doc)):
         page = doc[page_idx]
         text = page.get_text("text")
+        total_chars += len(text.strip())
         lines.append(f"\n--- PDF PAGE {page_idx + 1} ---")
         lines.append(text)
+
+    # Scanned PDF check: if digital text is virtually empty, run OCR
+    if len(doc) > 0 and (total_chars / max(len(doc), 1)) < 30:
+        logger.info(f"PDF appears to be scanned ({total_chars} text chars across {len(doc)} pages). Running OCR...")
+        ocr_lines = []
+        try:
+            import pytesseract
+            from PIL import Image
+            for page_idx in range(len(doc)):
+                page = doc[page_idx]
+                pix = page.get_pixmap(dpi=200)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                ocr_text = pytesseract.image_to_string(img)
+                ocr_lines.append(f"\n--- OCR PDF PAGE {page_idx + 1} ---")
+                ocr_lines.append(ocr_text)
+            if "".join(ocr_lines).strip():
+                return "\n".join(ocr_lines)
+        except Exception as ocr_err:
+            logger.warning(f"Local Tesseract OCR skipped: {ocr_err}")
+
     return "\n".join(lines)
 
 
@@ -248,8 +270,8 @@ async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -
     import asyncio
 
     client = genai.Client(api_key=api_key)
-    preferred_model = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash") or "gemini-2.0-flash"
-    candidates = [preferred_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    preferred_model = getattr(settings, "GEMINI_MODEL", "gemini-3.5-flash") or "gemini-3.5-flash"
+    candidates = [preferred_model, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     seen = set()
     models = [m for m in candidates if not (m in seen or seen.add(m))]
 

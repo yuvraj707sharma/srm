@@ -356,12 +356,12 @@ export default function CreateBOQPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700">Department</label>
+            <label className="text-xs font-bold text-slate-700">Department <span className="text-slate-400 font-normal text-[11px]">(Optional)</span></label>
             <input
               type="text"
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
-              placeholder="e.g., Medical Gases / Operations"
+              placeholder="e.g., Operations / Procurement (Optional)"
               className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
