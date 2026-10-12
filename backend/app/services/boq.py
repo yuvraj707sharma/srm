@@ -236,7 +236,7 @@ def _split_text_into_chunks(text: str, max_chunk_chars: int = 6000) -> List[str]
     return chunks if chunks else [text]
 
 
-async def extract_boq_with_gemini(raw_text: str) -> Dict[str, Any]:
+async def extract_boq_with_gemini(raw_text: str, boq_type: str = "COMMERCIAL") -> Dict[str, Any]:
     """
     Sends document text to Gemini AI to extract normalized BOQ items and custom columns.
     Uses concurrent multi-pass chunking for large documents to extract 100% of line items instantly.
@@ -248,14 +248,16 @@ async def extract_boq_with_gemini(raw_text: str) -> Dict[str, Any]:
     import asyncio
 
     client = genai.Client(api_key=api_key)
-    models = ["gemini-3.7-flash", "gemini-3.6-flash"]
-
+    preferred_model = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash") or "gemini-2.0-flash"
+    candidates = [preferred_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    seen = set()
+    models = [m for m in candidates if not (m in seen or seen.add(m))]
 
     chunks = _split_text_into_chunks(raw_text, max_chunk_chars=7500)
-    logger.info(f"BOQ document split into {len(chunks)} chunk(s) for concurrent extraction.")
+    logger.info(f"BOQ document split into {len(chunks)} chunk(s) for concurrent extraction (Type: {boq_type}).")
 
     def _process_chunk_sync(chunk_idx: int, chunk_text: str) -> Dict[str, Any]:
-        prompt = f"Please extract all BOQ line items and custom column attributes from this tender document section/chunk (Chunk {chunk_idx}/{len(chunks)}):\n\n{chunk_text}"
+        prompt = f"Tender Type: {boq_type}. Please extract all BOQ line items and custom column attributes from this tender document section/chunk (Chunk {chunk_idx}/{len(chunks)}):\n\n{chunk_text}"
         config = types.GenerateContentConfig(
             system_instruction=BOQ_EXTRACTION_SYSTEM_PROMPT,
             temperature=0.1,
