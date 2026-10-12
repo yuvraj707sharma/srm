@@ -30,8 +30,8 @@ export default function CreateBOQPage() {
   const [deadlineDays, setDeadlineDays] = useState(3);
   const [targetAudience, setTargetAudience] = useState<"ALL_APPROVED" | "SELECTED_VENDORS">("ALL_APPROVED");
 
-  // Ingestion Mode: "FILE" | "PASTE" | "MANUAL"
-  const [inputTab, setInputTab] = useState<"FILE" | "PASTE" | "MANUAL">("FILE");
+  // Ingestion Mode: "PASTE" | "FILE" | "MANUAL"
+  const [inputTab, setInputTab] = useState<"PASTE" | "FILE" | "MANUAL">("PASTE");
   const [rawText, setRawText] = useState("");
   const [isParsingText, setIsParsingText] = useState(false);
 
@@ -413,17 +413,6 @@ export default function CreateBOQPage() {
         {/* Navigation Tabs */}
         <div className="flex border-b border-slate-200 bg-slate-50/70 px-4 pt-3 space-x-2 text-xs font-bold">
           <button
-            onClick={() => setInputTab("FILE")}
-            className={`px-4 py-2.5 rounded-t-xl transition-all flex items-center space-x-2 ${
-              inputTab === "FILE"
-                ? "bg-white text-blue-700 border-t-2 border-x border-slate-200 shadow-xs"
-                : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            <span>📁</span>
-            <span>Upload Document (Excel / PDF / Word)</span>
-          </button>
-          <button
             onClick={() => setInputTab("PASTE")}
             className={`px-4 py-2.5 rounded-t-xl transition-all flex items-center space-x-2 ${
               inputTab === "PASTE"
@@ -433,6 +422,18 @@ export default function CreateBOQPage() {
           >
             <span>📝</span>
             <span>Write / Paste Raw Text</span>
+            <span className="text-[10px] bg-blue-100 text-blue-700 font-semibold px-1.5 py-0.5 rounded-full">Primary</span>
+          </button>
+          <button
+            onClick={() => setInputTab("FILE")}
+            className={`px-4 py-2.5 rounded-t-xl transition-all flex items-center space-x-2 ${
+              inputTab === "FILE"
+                ? "bg-white text-blue-700 border-t-2 border-x border-slate-200 shadow-xs"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <span>📁</span>
+            <span>Upload Document (Excel / PDF / Word)</span>
           </button>
           <button
             onClick={() => setInputTab("MANUAL")}
@@ -447,7 +448,35 @@ export default function CreateBOQPage() {
           </button>
         </div>
 
-        {/* Tab 1: File Upload */}
+        {/* Tab 1 (Primary): Paste / Write Raw Text */}
+        {inputTab === "PASTE" && (
+          <div className="p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block">Write or Paste Tender Requirements & Scope</label>
+                <span className="text-[11px] text-slate-400">Paste narrative equipment scopes, slide notes, or bullet lists</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleParseRawText}
+                disabled={isParsingText || !rawText.trim()}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center space-x-1.5 shadow-xs"
+              >
+                <span>{isParsingText ? "⏳" : "⚡"}</span>
+                <span>{isParsingText ? "Parsing with AI..." : "Extract BOQ Items with AI"}</span>
+              </button>
+            </div>
+            <textarea
+              rows={7}
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              placeholder="Paste tender scope, equipment lists, or notes here, e.g.:&#10;Liquid Medical Oxygen (LMO) Storage Tank - 20 to 30 KL&#10;Ambient Vaporizer Skid (Duplex)&#10;Duplex Pressure Regulating Station (PRS)&#10;Backup Cylinder Manifold System&#10;MGPS Copper Pipeline Network"
+              className="w-full text-xs font-mono p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 leading-relaxed placeholder:text-slate-400"
+            />
+          </div>
+        )}
+
+        {/* Tab 2: File Upload */}
         {inputTab === "FILE" && (
           <div className="p-6">
             <div
@@ -471,31 +500,6 @@ export default function CreateBOQPage() {
                 </>
               )}
             </div>
-          </div>
-        )}
-
-        {/* Tab 2: Paste Raw Text */}
-        {inputTab === "PASTE" && (
-          <div className="p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700">Paste Free-Form BOQ or Requisition Text</label>
-              <button
-                type="button"
-                onClick={handleParseRawText}
-                disabled={isParsingText || !rawText.trim()}
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center space-x-1.5 shadow-xs"
-              >
-                <span>{isParsingText ? "⏳" : "⚡"}</span>
-                <span>{isParsingText ? "Parsing with AI..." : "AI Parse into Structured Table"}</span>
-              </button>
-            </div>
-            <textarea
-              rows={6}
-              value={rawText}
-              onChange={(e) => setRawText(e.target.value)}
-              placeholder="Paste raw requisition or equipment lines here, e.g.:&#10;1. Basic Price for LMO (Monthly) - 13000 SM3&#10;2. Transportation Charges - 13000 SM3&#10;3. Fixed Facility Charges - 12 Monthly"
-              className="w-full text-xs font-mono p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 leading-relaxed"
-            />
           </div>
         )}
 
