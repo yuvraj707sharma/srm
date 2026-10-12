@@ -169,6 +169,25 @@ export default function CreateBOQPage() {
     setItems(cleaned.length > 0 ? cleaned : [{ item_code: "ITEM-001", item_name: "", quantity: 1, uom: "Nos" }]);
   };
 
+  const handleCleanNoiseRows = () => {
+    const noiseKeywords = [
+      "slide ", "hospital details", "estimated oxygen demand", "plant room setup",
+      "why lmo", "primary, secondary", "safe plant room layout", "continuous bulk",
+      "better pressure", "compliant with", "census beds", "objective", "standards &",
+      "applicable standards", "compliance requirements", "system components", "plant room requirements",
+      "civil requirements", "utility requirements", "safety requirements", "comparison of",
+      "vendor evaluation", "proposed timeline", "recommended scope"
+    ];
+    const cleaned = items.filter((it) => {
+      const name = (it.item_name || "").trim().toLowerCase();
+      if (!name) return false;
+      if (name.endsWith(":")) return false;
+      if (noiseKeywords.some(k => name.includes(k))) return false;
+      return true;
+    });
+    setItems(cleaned.length > 0 ? cleaned : [{ item_code: "ITEM-001", item_name: "", quantity: 1, uom: "Nos" }]);
+  };
+
   const handleAddItem = () => {
     setItems([
       ...items,
@@ -515,6 +534,14 @@ export default function CreateBOQPage() {
                 className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[11px] font-bold transition-colors"
               >
                 Clean Empty
+              </button>
+              <button
+                type="button"
+                onClick={handleCleanNoiseRows}
+                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold transition-colors"
+                title="Remove slide titles, headings, and non-item sentences"
+              >
+                🧹 Clean Noise
               </button>
             </div>
 
