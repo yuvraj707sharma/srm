@@ -294,181 +294,86 @@ def _fallback_heuristic_extraction(raw_text: str) -> List[Dict[str, Any]]:
                         "attributes": {}
                     })
 
-    if len(items) >= 3:
+    if len(items) >= 2:
         return items
 
-    # 2. Check for Canonical Equipment Packages (LMO / Medical Gas Scope)
-    raw_lower = raw_text.lower()
-    if any(k in raw_lower for k in ["lmo", "liquid medical oxygen", "ambient vaporizer", "mgps", "cryogenic"]):
-        CANONICAL_PACKAGES = [
-            {
-                "match": r"(?:lmo|oxygen).*tank|\btank.*(?:20|30|\bkl\b)",
-                "name": "Liquid Medical Oxygen (LMO) Storage Tank (20 KL – 30 KL)",
-                "specs": "Cryogenic double-walled vacuum insulated storage vessel compliant with PESO and ASME Section VIII. Sized for 1280-bed hospital demand.",
-                "qty": 1.0,
-                "uom": "Unit",
-                "category": "Primary Supply"
-            },
-            {
-                "match": r"ambient.*vaporizer|vaporizer",
-                "name": "Ambient Air Vaporizer Skid",
-                "specs": "Duplex atmospheric finned aluminum vaporizer with automatic defrost changeover, sized for peak hospital oxygen consumption.",
-                "qty": 2.0,
-                "uom": "Set",
-                "category": "Vaporization"
-            },
-            {
-                "match": r"pressure.*reduc|pressure.*regulat|\bprs\b",
-                "name": "Duplex Pressure Regulating / Reduction Station (PRS)",
-                "specs": "Dual-stage pressure reduction skid with active-standby regulators, safety relief valves, and pipeline pressure gauges.",
-                "qty": 1.0,
-                "uom": "Set",
-                "category": "Pressure Control"
-            },
-            {
-                "match": r"backup.*manifold|cylinder.*manifold",
-                "name": "Automatic Changeover Backup Cylinder Manifold System",
-                "specs": "Secondary oxygen source with automatic manifold switchover, high-pressure regulators, and digital cylinder bank indicators.",
-                "qty": 1.0,
-                "uom": "Set",
-                "category": "Secondary Source"
-            },
-            {
-                "match": r"reserve.*cylinder|emergency.*reserve",
-                "name": "Emergency Reserve Cylinder Bank",
-                "specs": "Standby reserve oxygen bank connected downstream of primary regulator for emergency N+1 redundancy.",
-                "qty": 1.0,
-                "uom": "Bank",
-                "category": "Emergency Reserve"
-            },
-            {
-                "match": r"mgps.*(?:pipeline|network|integration)|pipeline.*network",
-                "name": "MGPS Medical Gas Pipeline Network Integration",
-                "specs": "Seamless degreased medical-grade copper tubing conforming to HTM 02-01 / NFPA 99C / EN 13348 with fittings.",
-                "qty": 1.0,
-                "uom": "Lot",
-                "category": "Distribution"
-            },
-            {
-                "match": r"valve.*box|avsu|zone.*valve",
-                "name": "Area Valve Service Units (AVSU) & Zone Valve Box System",
-                "specs": "Zonal isolation valves with NIST connectors and tamper-proof lockable enclosures across all critical hospital departments.",
-                "qty": 1.0,
-                "uom": "Lot",
-                "category": "Isolation"
-            },
-            {
-                "match": r"alarm.*(?:panel|system)|gas.*alarm",
-                "name": "Central & Area Medical Gas Alarm Panels",
-                "specs": "Digital audio-visual alarm panels with high/low pressure sensors, plant room monitoring, and BMS/SCADA interface.",
-                "qty": 1.0,
-                "uom": "Set",
-                "category": "Monitoring"
-            },
-            {
-                "match": r"rcc.*foundation|civil.*(?:work|requirement)",
-                "name": "Turnkey Civil Works & Heavy-Duty RCC Tank Plinth",
-                "specs": "RCC foundation designed for 30 KL cryogenic tank load, non-combustible flooring, tanker access apron, and drainage.",
-                "qty": 1.0,
-                "uom": "Job",
-                "category": "Civil & Infrastructure"
-            },
-            {
-                "match": r"safety.*fencing|fencing",
-                "name": "Plant Room Perimeter Safety Fencing & Access Gates",
-                "specs": "Heavy-duty galvanized steel chain-link security fencing with lockable access gates and statutory hazard signage.",
-                "qty": 1.0,
-                "uom": "Job",
-                "category": "Safety"
-            },
-            {
-                "match": r"gas.*leak|leak.*detection",
-                "name": "Oxygen Gas Leak Detection & Fire Safety System",
-                "specs": "Fixed oxygen enrichment/leak sensors with audio alarms, earthing/lightning protection, and fire hydrant interface.",
-                "qty": 1.0,
-                "uom": "Set",
-                "category": "Safety"
-            },
-            {
-                "match": r"testing.*commissioning|commissioning",
-                "name": "Testing, Commissioning, Validation & PESO Licensing",
-                "specs": "Gas purity testing, pipeline nitrogen purging, pressure decay tests, HTM 02-01 validation, and PESO statutory approvals.",
-                "qty": 1.0,
-                "uom": "Job",
-                "category": "Services"
-            },
-            {
-                "match": r"(?:long.*term|annual).*amc|camc|amc.*support",
-                "name": "Comprehensive Annual Maintenance Contract (CAMC)",
-                "specs": "3-5 years comprehensive maintenance with 24/7 emergency breakdown support and periodic PESO re-certifications.",
-                "qty": 1.0,
-                "uom": "Contract",
-                "category": "Post-Warranty"
-            }
-        ]
-        matched_pkgs = []
-        for pkg in CANONICAL_PACKAGES:
-            if re.search(pkg["match"], raw_lower, re.IGNORECASE):
-                matched_pkgs.append({
-                    "item_code": f"ITEM-{len(matched_pkgs)+1:03d}",
-                    "item_name": pkg["name"],
-                    "specifications": pkg["specs"],
-                    "quantity": pkg["qty"],
-                    "uom": pkg["uom"],
-                    "category": pkg["category"],
-                    "attributes": {}
-                })
-        if len(matched_pkgs) >= 3:
-            return matched_pkgs
-
-    # 3. Parse general component headings, deliverables, or bullet points with strict noise rejection
-    component_keywords = [
-        "tank", "vaporizer", "manifold", "pipeline", "valve", 
-        "alarm", "compressor", "vacuum", "foundation", "plinth",
-        "civil work", "testing", "commissioning", "installation"
-    ]
-    noise_phrases = [
-        "for a ", "should be designed", "primary, secondary", "to establish",
-        "continuous bulk", "better pressure", "lower operational", "cost-effective",
-        "essential for", "safe plant room", "future scalability", "census beds",
-        "slide ", "chapter ", "section ", "objective", "comparison of", "vendor",
-        "applicable standards", "compliance requirements", "why lmo"
-    ]
+    # 2. Parse Line-by-Line Directly (WYSIWYG: What You See Is What You Get)
+    # Extracts items faithfully from user-typed or pasted text without hallucinating extra equipment.
+    UOM_SET = {"sm3", "monthly", "one time", "nos", "set", "lot", "job", "kg", "kl", "mtrs", "unit", "bank", "sqft", "cum"}
     seen_names = set()
+
     for line in lines:
         stripped = line.strip()
-        if not stripped or len(stripped) < 4 or len(stripped) > 100:
+        if not stripped or len(stripped) < 3 or stripped.endswith(":"):
             continue
-        if stripped.endswith(":") or stripped.startswith(("---", "Slide", "slide")):
-            continue
-        clean_lower = stripped.lower()
-        if any(np in clean_lower for np in noise_phrases):
+        if stripped.startswith("---") or stripped.lower().startswith("slide "):
             continue
 
-        is_bullet = stripped.startswith(("-", "•", "*")) or bool(re.match(r'^\d+[\.\)]\s+', stripped))
-        has_keyword = any(k in clean_lower for k in component_keywords)
+        # Remove leading list numbers like 1., 1), 1 -, etc.
+        clean_text = re.sub(r'^\d+[\.\)\-\:\s]+', '', stripped).strip()
+        if not clean_text or clean_text.lower() in seen_names:
+            continue
 
-        if is_bullet or has_keyword:
-            clean_name = re.sub(r'^[\d\.\)\-\•\*\s]+', '', stripped).strip()
-            if clean_name and clean_name.lower() not in seen_names and len(clean_name) >= 4:
-                seen_names.add(clean_name.lower())
-                uom_guess = "Nos"
-                if any(w in clean_name.lower() for w in ["system", "station", "manifold", "network", "bank"]):
-                    uom_guess = "Set"
-                elif any(w in clean_name.lower() for w in ["work", "integration", "commissioning", "approval", "license"]):
-                    uom_guess = "Job"
+        item_name = clean_text
+        qty = 1.0
+        uom = "Nos"
 
-                items.append({
-                    "item_code": f"ITEM-{len(items)+1:03d}",
-                    "item_name": clean_name,
-                    "specifications": stripped,
-                    "quantity": 1.0,
-                    "uom": uom_guess,
-                    "category": "Scope Package",
-                    "attributes": {}
-                })
-                if len(items) >= 20:
-                    break
+        # Check delimiter patterns: Pipe |, Tab \t, or comma
+        if "|" in clean_text:
+            parts = [p.strip() for p in clean_text.split("|") if p.strip()]
+            item_name = parts[0]
+            if len(parts) >= 2:
+                try:
+                    qty = float(re.sub(r'[^\d.]', '', parts[1]))
+                except Exception:
+                    pass
+            if len(parts) >= 3:
+                uom = parts[2]
+        elif "\t" in clean_text:
+            parts = [p.strip() for p in clean_text.split("\t") if p.strip()]
+            item_name = parts[0]
+            if len(parts) >= 2:
+                try:
+                    qty = float(re.sub(r'[^\d.]', '', parts[1]))
+                except Exception:
+                    pass
+            if len(parts) >= 3:
+                uom = parts[2]
+        else:
+            # Check for trailing quantity and UOM, e.g. " - 13000 SM3" or " 12 Monthly"
+            m = re.search(r'[-–—:]\s*(\d+(?:\.\d+)?)\s*([a-zA-Z0-9\s]+)$', clean_text)
+            if m:
+                try:
+                    qty_val = float(m.group(1))
+                    uom_val = m.group(2).strip()
+                    if uom_val.lower() in UOM_SET or len(uom_val) <= 10:
+                        qty = qty_val
+                        uom = uom_val
+                        item_name = clean_text[:m.start()].strip().rstrip("-–—: ")
+                except Exception:
+                    pass
+            else:
+                # Infer common UOM from parentheses
+                for u in ["monthly", "one time", "nos", "set", "sm3"]:
+                    if clean_text.lower().endswith(f"({u})"):
+                        uom = u.title() if u != "sm3" else "SM3"
+                        break
+
+        # Remove bullet marks
+        item_name = re.sub(r'^[•\-\*]\s*', '', item_name).strip()
+        if len(item_name) < 2:
+            continue
+
+        seen_names.add(item_name.lower())
+        items.append({
+            "item_code": f"ITEM-{len(items)+1:03d}",
+            "item_name": item_name,
+            "specifications": None,
+            "quantity": qty,
+            "uom": uom,
+            "category": "Line Item",
+            "attributes": {}
+        })
 
     return items
 

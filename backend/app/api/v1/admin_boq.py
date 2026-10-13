@@ -134,6 +134,10 @@ class ParseTextPayload(BaseModel):
     raw_text: str
     boq_type: Optional[str] = "COMMERCIAL"
 
+class CompareChatPayload(BaseModel):
+    message: str
+    conversation_history: Optional[List[Dict[str, str]]] = []
+
 
 # -------------------------------------------------------------------------
 # Endpoints
@@ -894,6 +898,110 @@ async def export_comparative_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+@router.post("/{boq_id}/compare/chat")
+async def chat_comparative_statement(
+    boq_id: str,
+    payload: CompareChatPayload,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin_or_token)
+):
+    """
+    AI Tender Evaluation Analyst: Answers procurement questions, generates comparisons,
+    analyzes commercial terms, and identifies negotiation opportunities from the comparative statement matrix.
+    """
+    try:
+        data = await get_comparative_statement_data(db, boq_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Comparative statement error: {str(e)}")
+
+    tender_title = data.get("title", "Tender")
+    tender_no = data.get("tender_number", "Ref N/A")
+    vendors = data.get("vendors", [])
+    rows = data.get("rows", [])
+    l1 = data.get("l1_profile")
+
+    # Build text representation of comparative matrix
+    context_lines = [
+        f"TENDER: {tender_title} ({tender_no})",
+        f"TOTAL VENDORS PARTICIPATING: {len(vendors)}",
+    ]
+    if l1:
+        context_lines.append(f"CURRENT L1 BIDDER: {l1.get('vendor_name')} (Grand Total: INR {l1.get('effective_total', 0):,.2f})")
+
+    context_lines.append("\nVENDOR DETAILS & COMMERCIAL TOTALS:")
+    for v in vendors:
+        v_name = v.get("vendor_name") or v.get("company_name")
+        context_lines.append(
+            f"- Vendor: {v_name} | Rank: {v.get('l_rank', '-')} | Grand Total: INR {v.get('effective_total', 0):,.2f} "
+            f"| GST: INR {v.get('gst_amount', 0):,.2f} | Contact: {v.get('contact_no', '-')} | Model: {v.get('model_no', '-')} | Tank/Location: {v.get('tank_capacity_location', '-')}"
+        )
+        context_lines.append(
+            f"  Terms: SITC Payment: {v.get('payment_terms_sitc', '-')}, Gas Payment: {v.get('payment_terms_gas', '-')}, "
+            f"Delivery: {v.get('delivery_time', '-')}, Tenure: {v.get('agreement_tenure', '-')}, Lock-in: {v.get('lock_in_period', '-')}, "
+            f"Price Escalation: {v.get('price_escalation', '-')}, Mode of Delivery: {v.get('mode_of_delivery', '-')}, Min Volume: {v.get('minimum_expected_volume', '-')}"
+        )
+
+    context_lines.append("\nITEMIZED LINE ITEM COMPARISON:")
+    for r in rows:
+        context_lines.append(f"\nItem {r.get('s_no')}: {r.get('item_name')} (Qty: {r.get('quantity')} {r.get('uom')})")
+        for v in vendors:
+            sub_id = v.get("submission_id")
+            q = r.get("vendor_quotes", {}).get(sub_id, {})
+            v_name = v.get("vendor_name")
+            unit_p = q.get("negotiated_price") or q.get("initial_quoted_price") or 0.0
+            tot_p = q.get("negotiated_total_amount") or q.get("total_amount") or 0.0
+            context_lines.append(f"  * {v_name}: Unit Rate: INR {unit_p:,.2f} | Total: INR {tot_p:,.2f}")
+
+    matrix_context = "\n".join(context_lines)
+
+    system_prompt = f"""You are an elite Procurement Advisor, Chief Financial Officer (CFO), and Healthcare Quantity Surveyor advising the Procurement Committee at JECRC Medical College & Hospital.
+You have the complete official Comparative Statement for this tender:
+
+{matrix_context}
+
+INSTRUCTIONS:
+1. Provide accurate, data-driven, executive answers based ONLY on the above comparative statement data.
+2. When comparing vendors, cite exact numbers (unit rates, totals, difference in INR, percentage difference).
+3. Identify financial advantages, operational risks, hidden costs, and negotiation leverage.
+4. Format your response cleanly using GitHub Markdown with bold headings, bullet points, and clean comparison tables where appropriate.
+5. Be concise, objective, and professional.
+"""
+
+    api_key = settings.GEMINI_API_KEY
+    if not api_key:
+        return {"response": f"Summary for {tender_title}:\n\nTotal {len(vendors)} vendor(s) quoted. L1 bidder is {l1.get('vendor_name') if l1 else 'undetermined'} with total of INR {l1.get('effective_total', 0):,.2f}."}
+
+    client = genai.Client(api_key=api_key)
+    chat_prompt = f"User Question: {payload.message}\n\nPlease analyze the comparative statement and provide a comprehensive, clear response."
+
+    models = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.0-flash", "gemini-flash"]
+    answer = None
+    for model_name in models:
+        try:
+            resp = client.models.generate_content(
+                model=model_name,
+                contents=[chat_prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.2,
+                )
+            )
+            answer = resp.text.strip()
+            if answer:
+                break
+        except Exception as err:
+            logger.warning(f"Chat AI error with {model_name}: {err}")
+            continue
+
+    if not answer:
+        answer = f"**Tender Summary:**\n- **Tender:** {tender_title}\n- **Vendors:** {len(vendors)} participating\n- **Lowest Bidder (L1):** {l1.get('vendor_name', 'N/A')} at INR {l1.get('effective_total', 0):,.2f}."
+
+    return {
+        "status": "success",
+        "response": answer
+    }
 
 
 @router.get("/{boq_id}/download-template")

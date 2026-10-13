@@ -109,6 +109,73 @@ export default function CreateBOQPage() {
     }
   };
 
+  // Direct Text-to-BOQ Loader (As-Is, Exact Lines, No Hallucinations, No Extra Machines)
+  const handleLoadRawTextDirectly = () => {
+    if (!rawText.trim()) {
+      setError("Please paste or write requisition text first.");
+      return;
+    }
+    setError(null);
+
+    const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+
+    const noiseKeywords = [
+      "slide ", "hospital details", "estimated oxygen demand", "plant room setup",
+      "why lmo", "primary, secondary", "safe plant room layout", "continuous bulk",
+      "better pressure", "compliant with", "census beds", "objective", "standards &",
+      "applicable standards", "compliance requirements", "system components", "plant room requirements",
+      "civil requirements", "utility requirements", "safety requirements", "comparison of",
+      "vendor evaluation", "proposed timeline", "recommended scope"
+    ];
+
+    const parsed: ExtractedItem[] = [];
+    let count = 1;
+
+    for (const rawLine of lines) {
+      const lower = rawLine.toLowerCase();
+      // Skip obvious noise section headings when large multiline text is pasted
+      if (lines.length > 5 && (rawLine.endsWith(":") || noiseKeywords.some(k => lower === k || lower.startsWith(k + ":")))) {
+        continue;
+      }
+
+      // Strip leading numbering or bullet prefixes: "1.", "1)", "-", "•"
+      let cleanLine = rawLine.replace(/^(\d+[\.\)\-:]\s*|[\-\*•▪]\s*)/, "").trim();
+      if (!cleanLine) continue;
+
+      let qty = 1;
+      let uom = "Nos";
+
+      // Detect common UOM / quantity patterns e.g. "1000 SM3", "20 KL", "1 Nos", "1 Lot"
+      const qtyUomMatch = cleanLine.match(/[\-–—:]?\s*(\d+(?:\.\d+)?)\s*(SM3|KL|Nos|Sets|Mtr|Kg|Ltr|Pcs|Units|Months|Years|Lot)\b/i);
+      if (qtyUomMatch) {
+        qty = parseFloat(qtyUomMatch[1]) || 1;
+        uom = qtyUomMatch[2];
+      }
+
+      parsed.push({
+        item_code: `ITEM-${String(count).padStart(3, "0")}`,
+        item_name: cleanLine,
+        quantity: qty,
+        uom: uom,
+        specifications: "",
+      });
+      count++;
+    }
+
+    if (parsed.length > 0) {
+      setItems(parsed);
+    } else {
+      setItems(lines.map((l, idx) => ({
+        item_code: `ITEM-${String(idx + 1).padStart(3, "0")}`,
+        item_name: l,
+        quantity: 1,
+        uom: "Nos",
+        specifications: "",
+      })));
+    }
+  };
+
   // Raw Text Parse Handler
   const handleParseRawText = async () => {
     if (!rawText.trim()) {
@@ -264,7 +331,6 @@ export default function CreateBOQPage() {
           quantity: Number(it.quantity) || 1.0,
           uom: it.uom || "Nos",
           category: it.category,
-          target_price: it.target_price ? Number(it.target_price) : undefined,
           attributes: it.attributes || {},
         })),
         target_audience: targetAudience,
@@ -451,20 +517,32 @@ export default function CreateBOQPage() {
         {/* Tab 1 (Primary): Paste / Write Raw Text */}
         {inputTab === "PASTE" && (
           <div className="p-5 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <label className="text-xs font-bold text-slate-700 block">Write or Paste Tender Requirements & Scope</label>
-                <span className="text-[11px] text-slate-400">Paste narrative equipment scopes, slide notes, or bullet lists</span>
+                <span className="text-[11px] text-slate-400">Type or paste requirements line-by-line (e.g. equipment names, services, or scopes)</span>
               </div>
-              <button
-                type="button"
-                onClick={handleParseRawText}
-                disabled={isParsingText || !rawText.trim()}
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center space-x-1.5 shadow-xs"
-              >
-                <span>{isParsingText ? "⏳" : "⚡"}</span>
-                <span>{isParsingText ? "Parsing with AI..." : "Extract BOQ Items with AI"}</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleLoadRawTextDirectly}
+                  disabled={!rawText.trim()}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center space-x-1.5 shadow-xs"
+                  title="Directly load typed lines into the table as-is without AI alterations or added machines"
+                >
+                  <span>⚡</span>
+                  <span>Load Typed Text (As-Is, No AI)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleParseRawText}
+                  disabled={isParsingText || !rawText.trim()}
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center space-x-1.5 shadow-xs"
+                >
+                  <span>{isParsingText ? "⏳" : "🤖"}</span>
+                  <span>{isParsingText ? "Parsing with AI..." : "Extract with AI"}</span>
+                </button>
+              </div>
             </div>
             <textarea
               rows={7}
@@ -604,7 +682,6 @@ export default function CreateBOQPage() {
                   <th className="p-2.5 min-w-[200px]">Item Description <span className="text-red-500">*</span></th>
                   <th className="p-2.5 w-20 text-center">Qty</th>
                   <th className="p-2.5 w-20 text-center">UOM</th>
-                  <th className="p-2.5 w-28">Est. Unit Rate</th>
                   {customColumns.map((col) => (
                     <th key={col} className="p-2.5 min-w-[120px]">
                       <div className="flex items-center justify-between">
@@ -660,17 +737,6 @@ export default function CreateBOQPage() {
                         onChange={(e) => handleItemChange(idx, "uom", e.target.value)}
                         placeholder="SM3"
                         className="w-full text-xs text-center px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        value={item.target_price || ""}
-                        onChange={(e) => handleItemChange(idx, "target_price", e.target.value ? Number(e.target.value) : undefined)}
-                        placeholder="₹ Optional"
-                        className="w-full text-xs px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500"
                       />
                     </td>
                     {customColumns.map((col) => (
@@ -818,9 +884,6 @@ export default function CreateBOQPage() {
                         <th className="p-2.5 min-w-[200px]">Item Description & Specifications</th>
                         <th className="p-2.5 text-center w-20">Quantity</th>
                         <th className="p-2.5 text-center w-16">UOM</th>
-                        {items.some(i => i.target_price) && (
-                          <th className="p-2.5 text-right w-24">Est. Rate</th>
-                        )}
                         {customColumns.map(col => (
                           <th key={col} className="p-2.5">{col}</th>
                         ))}
@@ -843,11 +906,6 @@ export default function CreateBOQPage() {
                             <td className="p-2.5 text-center">
                               <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium text-[10px] uppercase">{item.uom}</span>
                             </td>
-                            {items.some(i => i.target_price) && (
-                              <td className="p-2.5 text-right font-mono text-slate-700 font-medium">
-                                {item.target_price ? `₹${item.target_price.toLocaleString("en-IN")}` : "-"}
-                              </td>
-                            )}
                             {customColumns.map(col => (
                               <td key={col} className="p-2.5 text-slate-600 text-[11px]">{item.attributes?.[col] || "-"}</td>
                             ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState, useRef, Fragment } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchApi } from "../../../../../../lib/api/client";
@@ -136,6 +136,62 @@ interface ComparativeData {
   advisory?: Advisory;
 }
 
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+function FormattedAiResponse({ content }: { content: string }) {
+  const lines = content.split("\n");
+  return (
+    <div className="space-y-1.5 text-xs text-slate-800 leading-relaxed font-sans">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} className="h-1" />;
+
+        if (trimmed.startsWith("### ")) {
+          return <h4 key={idx} className="font-bold text-slate-900 text-xs mt-2">{trimmed.slice(4)}</h4>;
+        }
+        if (trimmed.startsWith("## ")) {
+          return <h3 key={idx} className="font-extrabold text-slate-900 text-sm mt-3">{trimmed.slice(3)}</h3>;
+        }
+
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+          const text = trimmed.slice(2);
+          return (
+            <div key={idx} className="flex items-start space-x-1.5 pl-2">
+              <span className="text-blue-500 font-bold shrink-0">•</span>
+              <div>{renderFormattedText(text)}</div>
+            </div>
+          );
+        }
+
+        const numMatch = trimmed.match(/^(\d+[\.\)])\s*(.*)$/);
+        if (numMatch) {
+          return (
+            <div key={idx} className="flex items-start space-x-1.5 pl-2">
+              <span className="font-bold text-slate-500 shrink-0">{numMatch[1]}</span>
+              <div>{renderFormattedText(numMatch[2])}</div>
+            </div>
+          );
+        }
+
+        return <p key={idx}>{renderFormattedText(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+function renderFormattedText(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={i} className="font-bold text-slate-900">{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
 export default function ComparativeStatementPage() {
   const params = useParams();
   const router = useRouter();
@@ -145,8 +201,8 @@ export default function ComparativeStatementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Active view tab: "commercial_lmo" | "matrix" | "advisory" | "discrepancies" | "cost"
-  const [activeTab, setActiveTab] = useState<"commercial_lmo" | "advisory" | "matrix" | "discrepancies" | "cost">("advisory");
+  // Active view tab: Default to commercial_lmo (the exact Excel statement)
+  const [activeTab, setActiveTab] = useState<"commercial_lmo" | "advisory" | "matrix" | "discrepancies" | "cost">("commercial_lmo");
 
   // Modal State for Vendor BOQ Detail View
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
@@ -173,9 +229,27 @@ export default function ComparativeStatementPage() {
   const [savingNegotiation, setSavingNegotiation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Interactive AI Chat Assistant State
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content: "Hello! I am your AI Procurement Analyst for this tender. Ask me anything about the comparative statement—such as identifying the lowest bidder, evaluating differences in quoted rates, comparing commercial terms, or formulating negotiation strategies.",
+    },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     loadComparativeData();
   }, [boqId]);
+
+  useEffect(() => {
+    if (isChatOpen && chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, isChatOpen]);
 
   async function loadComparativeData() {
     try {
@@ -186,10 +260,6 @@ export default function ComparativeStatementPage() {
       }
       const compData = await res.json();
       setData(compData);
-
-      if (compData.boq_type === "COMMERCIAL") {
-        setActiveTab("commercial_lmo");
-      }
 
       // Initialize negotiation edits
       const initialRates: Record<string, Record<string, number>> = {};
@@ -212,6 +282,52 @@ export default function ComparativeStatementPage() {
       setLoading(false);
     }
   }
+
+  const handleSendChatMessage = async (overrideMessage?: string) => {
+    const textToSend = (overrideMessage || chatInput).trim();
+    if (!textToSend || isSendingChat) return;
+
+    const userMsg: ChatMessage = { role: "user", content: textToSend };
+    setChatMessages((prev) => [...prev, userMsg]);
+    if (!overrideMessage) setChatInput("");
+    setIsSendingChat(true);
+
+    try {
+      const historyPayload = chatMessages
+        .filter((m) => m.content)
+        .map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          content: m.content,
+        }));
+
+      const res = await fetchApi(`/api/v1/admin/boq/${boqId}/compare/chat`, {
+        method: "POST",
+        body: JSON.stringify({
+          message: textToSend,
+          history: historyPayload,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to analyze query.");
+      }
+
+      const result = await res.json();
+      const aiReply = result.response || "No response received.";
+      setChatMessages((prev) => [...prev, { role: "assistant", content: aiReply }]);
+    } catch (err: any) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `⚠️ Error: ${err.message || "Failed to contact AI analyst."}`,
+        },
+      ]);
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
 
   const handleNegotiatedPriceChange = (submissionId: string, itemId: string, val: string) => {
     const num = parseFloat(val) || 0;
@@ -615,20 +731,18 @@ export default function ComparativeStatementPage() {
       )}
 
       {/* Navigation View Tabs */}
-      <div className="flex border-b border-slate-200 space-x-2 text-xs font-bold px-2 flex-wrap gap-y-1">
-        {data.boq_type === "COMMERCIAL" && (
-          <button
-            onClick={() => setActiveTab("commercial_lmo")}
-            className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
-              activeTab === "commercial_lmo"
-                ? "bg-white text-amber-800 border-t-2 border-x border-slate-200 font-extrabold shadow-xs"
-                : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            <span>🧪</span>
-            <span>Official Commercial Statement (LMO Excel Reference)</span>
-          </button>
-        )}
+      <div className="flex border-b border-slate-200 space-x-2 text-xs font-bold px-2 flex-wrap gap-y-1 items-center">
+        <button
+          onClick={() => setActiveTab("commercial_lmo")}
+          className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
+            activeTab === "commercial_lmo"
+              ? "bg-white text-amber-800 border-t-2 border-x border-slate-200 font-extrabold shadow-xs"
+              : "text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <span>📊</span>
+          <span>Comparative Statement (Excel Format)</span>
+        </button>
         <button
           onClick={() => setActiveTab("advisory")}
           className={`px-4 py-3 rounded-t-2xl transition-all flex items-center space-x-2 ${
@@ -702,17 +816,27 @@ export default function ComparativeStatementPage() {
               </p>
             </div>
 
-            {l1Vendor && (
-              <div className="p-4 bg-[#FEF08A] rounded-2xl border-2 border-amber-400 text-slate-950 shadow-sm text-right shrink-0">
-                <span className="text-[10px] font-black uppercase tracking-widest text-amber-900 block">
-                  Recommended Commercial L-1 Bidder
-                </span>
-                <span className="text-base font-black block mt-0.5">{l1Vendor.vendor_name}</span>
-                <span className="text-xs font-mono font-black text-slate-900">
-                  Effective Total: ₹{l1Vendor.effective_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            )}
+            <div className="flex items-center space-x-3 shrink-0 flex-wrap gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setIsChatOpen(true)}
+                className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition-all shadow-md flex items-center space-x-2 border border-indigo-500"
+              >
+                <span className="text-base">🤖</span>
+                <span>Ask AI Analyst</span>
+              </button>
+              {l1Vendor && (
+                <div className="p-4 bg-[#FEF08A] rounded-2xl border-2 border-amber-400 text-slate-950 shadow-sm text-right">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-900 block">
+                    Recommended Commercial L-1 Bidder
+                  </span>
+                  <span className="text-base font-black block mt-0.5">{l1Vendor.vendor_name}</span>
+                  <span className="text-xs font-mono font-black text-slate-900">
+                    Effective Total: ₹{l1Vendor.effective_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Master LMO Table (Mirroring Comparative Statement of LMO.xlsx) */}
@@ -1940,6 +2064,158 @@ export default function ComparativeStatementPage() {
                   {isSavingDisqualify ? "Saving..." : "⛔ Confirm Disqualify"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Ask AI Analyst Button */}
+      <div className="fixed bottom-6 right-6 z-40 print:hidden">
+        <button
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center space-x-2.5 text-xs font-black transition-all hover:scale-105 active:scale-95 border border-white/20"
+          title="Open AI Tender Analyst Chat"
+        >
+          <span className="text-lg">🤖</span>
+          <span>Ask AI Analyst</span>
+          <span className="bg-white/25 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+            Live
+          </span>
+        </button>
+      </div>
+
+      {/* AI Chat Assistant Window */}
+      {isChatOpen && (
+        <div className="fixed bottom-20 right-6 z-50 w-[460px] max-w-[calc(100vw-2rem)] h-[620px] max-h-[85vh] bg-white rounded-3xl border border-slate-300 shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200 print:hidden font-sans">
+          {/* Header */}
+          <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+            <div className="flex items-center space-x-3">
+              <span className="w-9 h-9 rounded-xl bg-blue-600/30 text-blue-400 flex items-center justify-center text-lg border border-blue-500/30">
+                🤖
+              </span>
+              <div>
+                <h3 className="text-sm font-bold tracking-tight text-white flex items-center space-x-2">
+                  <span>AI Tender Analyst</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.2 rounded-full border border-emerald-500/30 font-semibold">Active</span>
+                </h3>
+                <p className="text-[11px] text-slate-400 truncate max-w-[260px]">
+                  {data.tender_number} • {data.vendors.length} Bidders Evaluated
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsChatOpen(false)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              title="Close Chat"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Quick Question Chips */}
+          <div className="px-4 py-2.5 bg-slate-100/80 border-b border-slate-200 flex items-center space-x-1.5 overflow-x-auto text-[11px] font-semibold text-slate-700">
+            <span className="text-slate-400 text-[10px] uppercase font-bold shrink-0">Quick Ask:</span>
+            <button
+              onClick={() => handleSendChatMessage("Who is the L1 lowest bidder and what is their total price advantage over other vendors?")}
+              className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 rounded-lg shrink-0 transition-colors shadow-2xs"
+            >
+              💡 Lowest Bidder (L1)
+            </button>
+            <button
+              onClick={() => handleSendChatMessage("Compare the commercial terms, payment conditions, and delivery timeline across all bidders.")}
+              className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 rounded-lg shrink-0 transition-colors shadow-2xs"
+            >
+              📋 Commercial Terms
+            </button>
+            <button
+              onClick={() => handleSendChatMessage("Which items have the highest price variance and where can we negotiate for cost savings?")}
+              className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 rounded-lg shrink-0 transition-colors shadow-2xs"
+            >
+              🎯 Negotiation Points
+            </button>
+            <button
+              onClick={() => handleSendChatMessage("Compare tank capacity, PESO approval, and location quoted by each vendor.")}
+              className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 rounded-lg shrink-0 transition-colors shadow-2xs"
+            >
+              🧪 Tank & Logistics
+            </button>
+          </div>
+
+          {/* Message Thread */}
+          <div ref={chatScrollRef} className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50">
+            {chatMessages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+              >
+                <div
+                  className={`max-w-[88%] p-3.5 rounded-2xl text-xs ${
+                    msg.role === "user"
+                      ? "bg-blue-600 text-white font-medium rounded-br-xs shadow-sm"
+                      : "bg-white border border-slate-200 text-slate-800 rounded-bl-xs shadow-sm"
+                  }`}
+                >
+                  {msg.role === "assistant" ? (
+                    <FormattedAiResponse content={msg.content} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {isSendingChat && (
+              <div className="flex items-center space-x-2 text-xs text-slate-500 bg-white border border-slate-200 p-3 rounded-2xl rounded-bl-xs w-fit shadow-xs">
+                <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="font-medium">Analyzing comparative statement matrix & bids...</span>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input Bar */}
+          <div className="p-3 bg-white border-t border-slate-200 space-y-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendChatMessage();
+              }}
+              className="flex items-center space-x-2"
+            >
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Ask committee query (e.g., L1 vs L2 difference)..."
+                disabled={isSendingChat}
+                className="flex-1 text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={!chatInput.trim() || isSendingChat}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 shadow-sm shrink-0 flex items-center space-x-1"
+              >
+                <span>Send</span>
+                <span>➤</span>
+              </button>
+            </form>
+            <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
+              <span>Powered by Gemini AI • Live Tender Matrix</span>
+              {chatMessages.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChatMessages([
+                      {
+                        role: "assistant",
+                        content: "Chat cleared. What else would you like to know about this comparative statement?",
+                      },
+                    ])
+                  }
+                  className="text-slate-400 hover:text-red-500 font-semibold transition-colors"
+                >
+                  Clear History
+                </button>
+              )}
             </div>
           </div>
         </div>
