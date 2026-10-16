@@ -841,13 +841,17 @@ def _parse_vendor_excel_bid(boq: BOQ, file_bytes: bytes) -> Dict[str, Any]:
 
 
 async def _parse_vendor_pdf_bid_with_gemini(boq: BOQ, file_bytes: bytes, filename: str) -> Dict[str, Any]:
+    raw_text = extract_content_from_file(file_bytes, filename)
+    return await parse_vendor_submission_raw_text(boq, raw_text, filename)
+
+
+async def parse_vendor_submission_raw_text(boq: BOQ, raw_text: str, source_label: str = "Quotation Text") -> Dict[str, Any]:
     """
-    Deep Gemini AI extraction of vendor submitted quotation document (PDF / Word / Excel).
+    Deep Gemini AI extraction of vendor submitted quotation text or document.
     Processes long, multi-page bids in chunks to guarantee 100% data extraction without token truncation.
     Extracts line item quotes, model numbers, plant/tank specifications, and all commercial clauses.
     For COMMERCIAL/LMO type BOQs, extracts the full commercial structure: gas rate, monthly charge, one-time charges.
     """
-    raw_text = extract_content_from_file(file_bytes, filename)
     api_key = settings.GEMINI_API_KEY
     client = genai.Client(api_key=api_key)
 
@@ -860,7 +864,7 @@ async def _parse_vendor_pdf_bid_with_gemini(boq: BOQ, file_bytes: bytes, filenam
 
     # Chunk long documents page-by-page so all pages and lines are parsed without truncation
     chunks = _split_text_into_chunks(raw_text, max_chunk_chars=7500)
-    logger.info(f"Vendor quote '{filename}' ({len(raw_text)} chars) split into {len(chunks)} chunk(s) for Gemini deep extraction.")
+    logger.info(f"Vendor quote '{source_label}' ({len(raw_text)} chars) split into {len(chunks)} chunk(s) for Gemini deep extraction.")
 
     models_to_try = [settings.GEMINI_MODEL or "gemini-3.7-flash", "gemini-3.6-flash"]
 
@@ -1151,7 +1155,7 @@ Return ONLY raw JSON (no markdown fences):
         }
 
     raw_extraction = {
-        "filename": filename,
+        "filename": source_label,
         "boq_type": boq_type,
         "model_no": detected_model_no,
         "tank_capacity_location": detected_tank_capacity,

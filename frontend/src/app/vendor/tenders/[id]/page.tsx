@@ -87,28 +87,37 @@ export default function VendorTenderBiddingPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Submission Mode: "FORM" | "EXCEL" | "PDF"
-  const [activeTab, setActiveTab] = useState<"FORM" | "EXCEL" | "PDF">("FORM");
+  // Strictly TWO submission options as requested:
+  // 1: Writing / Pasting Raw Text ("RAW_TEXT")
+  // 2: Submitting a PDF Quotation ("PDF")
+  const [activeTab, setActiveTab] = useState<"RAW_TEXT" | "PDF">("RAW_TEXT");
+
+  // Raw text input state
+  const [rawTextQuote, setRawTextQuote] = useState("");
 
   // Revision & Draft State
   const [isEditingRevised, setIsEditingRevised] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
-  const [parsingFile, setParsingFile] = useState(false);
+  const [parsingText, setParsingText] = useState(false);
+  const [parsingPdf, setParsingPdf] = useState(false);
 
-  // Form Submission State
+  // Form Quotation Item State (Line-by-line verification table)
   const [formItems, setFormItems] = useState<Record<string, BidFormItem>>({});
   const [paymentTerms, setPaymentTerms] = useState("30 Days against delivery and acceptance");
   const [deliveryTime, setDeliveryTime] = useState("4 to 6 Weeks from PO");
   const [warrantyTerms, setWarrantyTerms] = useState("Standard 12 Months Comprehensive");
 
-  // Upload Submission State
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  // PDF Upload State
+  const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
+  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+
+  // Final confirmation modal
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const previewFileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const quotationSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadTender();
@@ -176,7 +185,7 @@ export default function VendorTenderBiddingPage() {
     return `⏳ ${h}h ${m}m ${s}s remaining`;
   };
 
-  // Calculations for manual form
+  // Calculations for quotation table
   const calculateFormTotals = () => {
     if (!tender) return { subTotal: 0, gstAmount: 0, grandTotal: 0 };
     let sub = 0;
@@ -201,6 +210,300 @@ export default function VendorTenderBiddingPage() {
       },
     }));
   };
+
+  // -------------------------------------------------------------------------
+  // OPTION 1: RAW TEXT QUOTATION ACTIONS
+  // -------------------------------------------------------------------------
+
+  // Insert Admin BOQ Items as a formatted template into the textarea
+  const handleInsertBoqTemplate = () => {
+    if (!tender) return;
+    const lines = tender.items.map((it, idx) => {
+      return `${idx + 1}. ${it.item_name} (Qty: ${it.quantity} ${it.uom}) - Rate:  | Make:  | GST: 18% | Compliance: COMPLIANT`;
+    });
+    const templateText = `${lines.join("\n")}\n\nCommercial Terms:\nPayment Terms: 30 Days against delivery and acceptance\nDelivery Period: 4 to 6 Weeks from PO\nWarranty Terms: Standard 12 Months Comprehensive`;
+    setRawTextQuote(templateText);
+    setSuccessMsg("📋 BOQ line items template inserted! Simply fill in your quoted rates and make/model, then click 'Load Quoted Rates'.");
+  };
+
+  // Instant Client-side Parser: maps typed lines to tender items without network wait
+  const handleInstantParseRawText = () => {
+    if (!rawTextQuote.trim() || !tender) {
+      setError("Please write or paste your quotation text above before loading.");
+      return;
+    }
+    setError(null);
+
+    const lines = rawTextQuote.split("\n").map((l) => l.trim()).filter(Boolean);
+    const updatedForm = { ...formItems };
+    let matchCount = 0;
+
+    // 1. Detect commercial terms
+    for (const line of lines) {
+      const lLower = line.toLowerCase();
+      if (lLower.startsWith("payment terms:") || lLower.startsWith("payment:")) {
+        const val = line.substring(line.indexOf(":") + 1).trim();
+        if (val) setPaymentTerms(val);
+      } else if (lLower.startsWith("delivery period:") || lLower.startsWith("delivery:") || lLower.startsWith("delivery time:")) {
+        const val = line.substring(line.indexOf(":") + 1).trim();
+        if (val) setDeliveryTime(val);
+      } else if (lLower.startsWith("warranty terms:") || lLower.startsWith("warranty:")) {
+        const val = line.substring(line.indexOf(":") + 1).trim();
+        if (val) setWarrantyTerms(val);
+      }
+    }
+
+    // 2. Match each tender item
+    tender.items.forEach((item, idx) => {
+      const itemNumStr = `${idx + 1}`;
+
+      // Check if line starts with 1., 1), 1 - or contains item code/name
+      let targetLine = lines.find((l) => {
+        const trimmed = l.trim();
+        return (
+          trimmed.startsWith(`${itemNumStr}.`) ||
+          trimmed.startsWith(`${itemNumStr})`) ||
+          trimmed.startsWith(`${itemNumStr} -`) ||
+          trimmed.startsWith(`${itemNumStr} |`) ||
+          (item.item_code && trimmed.toLowerCase().includes(item.item_code.toLowerCase())) ||
+          (item.item_name && trimmed.toLowerCase().includes(item.item_name.substring(0, 15).toLowerCase()))
+        );
+      });
+
+      // Fallback by line index if sequential
+      if (!targetLine && idx < lines.length) {
+        const cand = lines[idx];
+        const cLow = cand.toLowerCase();
+        if (!cLow.startsWith("payment") && !cLow.startsWith("delivery") && !cLow.startsWith("warranty") && !cLow.startsWith("commercial")) {
+          targetLine = cand;
+        }
+      }
+
+      if (targetLine) {
+        // Extract rate
+        let quotedPrice = 0;
+        const rateMatch = targetLine.match(/(?:rate|price|unit price|rs\.?|inr|₹)\s*[:=-]?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)/i);
+        if (rateMatch) {
+          quotedPrice = parseFloat(rateMatch[1].replace(/,/g, ""));
+        } else {
+          // Look for any standalone number after the item number prefix
+          const stripped = targetLine.replace(new RegExp(`^${itemNumStr}[.)\\-\\s]+`), "");
+          const numMatch = stripped.match(/([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)/);
+          if (numMatch) {
+            quotedPrice = parseFloat(numMatch[1].replace(/,/g, ""));
+          }
+        }
+
+        // Extract make / model
+        let makeModel = "";
+        const makeMatch = targetLine.match(/(?:make|model|brand|mfg)\s*[:=-]?\s*([^|;\n,]+)/i);
+        if (makeMatch) {
+          makeModel = makeMatch[1].trim();
+        }
+
+        // Extract GST %
+        let gstPct = updatedForm[item.id]?.gst_percent ?? 18;
+        const gstMatch = targetLine.match(/gst\s*[:=-]?\s*(\d+)%?/i);
+        if (gstMatch) {
+          gstPct = Number(gstMatch[1]);
+        }
+
+        // Extract compliance
+        let comp = updatedForm[item.id]?.technical_compliance || "COMPLIANT";
+        if (/non[- ]?compliant/i.test(targetLine)) {
+          comp = "NON_COMPLIANT";
+        } else if (/deviation/i.test(targetLine)) {
+          comp = "DEVIATION";
+        } else if (/compliant/i.test(targetLine)) {
+          comp = "COMPLIANT";
+        }
+
+        if (quotedPrice > 0 || makeModel) {
+          updatedForm[item.id] = {
+            ...updatedForm[item.id],
+            boq_item_id: item.id,
+            quoted_unit_price: quotedPrice || updatedForm[item.id]?.quoted_unit_price || 0,
+            make_model_quoted: makeModel || updatedForm[item.id]?.make_model_quoted || "",
+            gst_percent: gstPct,
+            technical_compliance: comp,
+          };
+          matchCount++;
+        }
+      }
+    });
+
+    setFormItems(updatedForm);
+    setSuccessMsg(`⚡ Loaded ${matchCount} quoted item rates into the review table below! Please verify prices and click Submit.`);
+    quotationSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // AI Deep Extraction: calls Gemini 3.8 to parse complex text quotations
+  const handleAIExtractRawText = async () => {
+    if (!rawTextQuote.trim() || !tender) {
+      setError("Please write or paste your quotation text above before extracting with AI.");
+      return;
+    }
+    setParsingText(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetchApi(`/api/v1/vendor/tenders/${boqId}/parse-bid-text`, {
+        method: "POST",
+        body: JSON.stringify({ raw_text: rawTextQuote }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "AI text extraction failed.");
+      }
+
+      const resData = await res.json();
+      const parsedBid = resData.parsed_bid || {};
+      const parsedItems: any[] = parsedBid.items || [];
+
+      setFormItems((prev) => {
+        const updated = { ...prev };
+        parsedItems.forEach((pi) => {
+          if (pi.boq_item_id && updated[pi.boq_item_id]) {
+            updated[pi.boq_item_id] = {
+              ...updated[pi.boq_item_id],
+              quoted_unit_price: Number(pi.quoted_unit_price) || updated[pi.boq_item_id].quoted_unit_price,
+              make_model_quoted: pi.make_model_quoted || updated[pi.boq_item_id].make_model_quoted,
+              technical_compliance: pi.technical_compliance || updated[pi.boq_item_id].technical_compliance,
+              vendor_remarks: pi.vendor_remarks || updated[pi.boq_item_id].vendor_remarks,
+              gst_percent: pi.gst_percent !== undefined ? Number(pi.gst_percent) : updated[pi.boq_item_id].gst_percent,
+            };
+          }
+        });
+        return updated;
+      });
+
+      if (parsedBid.payment_terms) setPaymentTerms(parsedBid.payment_terms);
+      if (parsedBid.delivery_time) setDeliveryTime(parsedBid.delivery_time);
+      if (parsedBid.warranty_terms) setWarrantyTerms(parsedBid.warranty_terms);
+
+      setSuccessMsg(`🤖 AI successfully mapped ${parsedItems.length} quoted items and commercial terms into the table below!`);
+      quotationSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (err: any) {
+      setError(err.message || "Failed to extract quotation text via AI.");
+    } finally {
+      setParsingText(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // OPTION 2: PDF QUOTATION SUBMISSION ACTIONS
+  // -------------------------------------------------------------------------
+
+  const handlePdfFileSelect = (file: File) => {
+    const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setError("Only PDF files (.pdf) are supported for PDF quotation submission.");
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File "${file.name}" exceeds the maximum allowed limit of 7 MB.`);
+      return;
+    }
+    setSelectedPdf(file);
+    setError(null);
+  };
+
+  // Extract PDF Quotes into Review Table (No DB Commit)
+  const handleParsePdfIntoForm = async () => {
+    if (!selectedPdf) {
+      setError("Please select a PDF quotation file first.");
+      return;
+    }
+
+    setParsingPdf(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedPdf);
+
+      const res = await fetchApi(`/api/v1/vendor/tenders/${boqId}/parse-bid-file`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "PDF quotation extraction failed.");
+      }
+
+      const resData = await res.json();
+      const parsedBid = resData.parsed_bid || {};
+      const parsedItems: any[] = parsedBid.items || [];
+
+      setFormItems((prev) => {
+        const updated = { ...prev };
+        parsedItems.forEach((pi) => {
+          if (pi.boq_item_id && updated[pi.boq_item_id]) {
+            updated[pi.boq_item_id] = {
+              ...updated[pi.boq_item_id],
+              quoted_unit_price: Number(pi.quoted_unit_price) || updated[pi.boq_item_id].quoted_unit_price,
+              make_model_quoted: pi.make_model_quoted || updated[pi.boq_item_id].make_model_quoted,
+              technical_compliance: pi.technical_compliance || updated[pi.boq_item_id].technical_compliance,
+              vendor_remarks: pi.vendor_remarks || updated[pi.boq_item_id].vendor_remarks,
+              gst_percent: pi.gst_percent !== undefined ? Number(pi.gst_percent) : updated[pi.boq_item_id].gst_percent,
+            };
+          }
+        });
+        return updated;
+      });
+
+      if (parsedBid.payment_terms) setPaymentTerms(parsedBid.payment_terms);
+      if (parsedBid.delivery_time) setDeliveryTime(parsedBid.delivery_time);
+      if (parsedBid.warranty_terms) setWarrantyTerms(parsedBid.warranty_terms);
+
+      setSuccessMsg(`Extracted quotation data from PDF "${selectedPdf.name}". Review the rates below before submitting.`);
+      quotationSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (err: any) {
+      setError(err.message || "Failed to extract quotation data from PDF.");
+    } finally {
+      setParsingPdf(false);
+    }
+  };
+
+  // Direct Submit & Seal PDF Quotation File
+  const handleDirectSubmitPdf = async () => {
+    if (!selectedPdf) {
+      setError("Please select a PDF quotation file first.");
+      return;
+    }
+
+    setUploadingPdf(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedPdf);
+
+      const res = await fetchApi(`/api/v1/vendor/tenders/${boqId}/upload-bid`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "PDF processing and submission failed.");
+      }
+
+      setIsEditingRevised(false);
+      setSelectedPdf(null);
+      setSuccessMsg("PDF quotation uploaded and sealed successfully for evaluation!");
+      await loadTender();
+    } catch (err: any) {
+      setError(err.message || "Failed to upload and submit PDF quotation.");
+    } finally {
+      setUploadingPdf(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // FINAL SUBMISSION & DRAFT ACTIONS
+  // -------------------------------------------------------------------------
 
   // Save as Draft (Unsealed)
   const handleSaveDraft = async () => {
@@ -266,7 +569,7 @@ export default function VendorTenderBiddingPage() {
     });
   };
 
-  // Submit & Lock via Web Form
+  // Submit & Lock via Verified Table
   const handleConfirmSubmitForm = async () => {
     if (!tender) return;
     setSubmitting(true);
@@ -303,105 +606,9 @@ export default function VendorTenderBiddingPage() {
       setSuccessMsg("Quotation successfully submitted and sealed for evaluation.");
       await loadTender();
     } catch (err: any) {
-      setError(err.message || "Failed to submit bid.");
+      setError(err.message || "Failed to submit quotation.");
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  // Preview & Extract File into Form (No DB commit)
-  const handleParseFileIntoForm = async (selectedFile: File) => {
-    const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
-    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
-      setError(`File "${selectedFile.name}" exceeds the maximum allowed limit of 7 MB.`);
-      return;
-    }
-
-    setParsingFile(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-
-      const res = await fetchApi(`/api/v1/vendor/tenders/${boqId}/parse-bid-file`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || "File extraction failed.");
-      }
-
-      const resData = await res.json();
-      const parsedBid = resData.parsed_bid || {};
-      const parsedItems: any[] = parsedBid.items || [];
-
-      // Update form items from parsed data
-      setFormItems((prev) => {
-        const updated = { ...prev };
-        parsedItems.forEach((pi) => {
-          if (pi.boq_item_id && updated[pi.boq_item_id]) {
-            updated[pi.boq_item_id] = {
-              ...updated[pi.boq_item_id],
-              quoted_unit_price: Number(pi.quoted_unit_price) || updated[pi.boq_item_id].quoted_unit_price,
-              make_model_quoted: pi.make_model_quoted || updated[pi.boq_item_id].make_model_quoted,
-              technical_compliance: pi.technical_compliance || updated[pi.boq_item_id].technical_compliance,
-              vendor_remarks: pi.vendor_remarks || updated[pi.boq_item_id].vendor_remarks,
-              gst_percent: pi.gst_percent !== undefined ? Number(pi.gst_percent) : updated[pi.boq_item_id].gst_percent,
-            };
-          }
-        });
-        return updated;
-      });
-
-      if (parsedBid.payment_terms) setPaymentTerms(parsedBid.payment_terms);
-      if (parsedBid.delivery_time) setDeliveryTime(parsedBid.delivery_time);
-      if (parsedBid.warranty_terms) setWarrantyTerms(parsedBid.warranty_terms);
-
-      setActiveTab("FORM");
-      setSuccessMsg(`Extracted quotation data from "${selectedFile.name}". Please review and verify each line item below before submitting.`);
-    } catch (err: any) {
-      setError(err.message || "Failed to extract quotation data from file.");
-    } finally {
-      setParsingFile(false);
-      setUploadFile(null);
-    }
-  };
-
-  // Submit via Direct File Upload (Excel or PDF)
-  const handleFileUploadSubmit = async (selectedFile: File) => {
-    const MAX_FILE_SIZE_BYTES = 7 * 1024 * 1024; // 7 MB
-    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
-      setError(`File "${selectedFile.name}" (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) exceeds the maximum allowed limit of 7 MB.`);
-      return;
-    }
-
-    setUploading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-
-      const res = await fetchApi(`/api/v1/vendor/tenders/${boqId}/upload-bid`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || "File processing failed.");
-      }
-
-      setIsEditingRevised(false);
-      setSuccessMsg("Quotation file uploaded and sealed successfully!");
-      await loadTender();
-    } catch (err: any) {
-      setError(err.message || "Failed to upload and submit bid file.");
-    } finally {
-      setUploading(false);
-      setUploadFile(null);
     }
   };
 
@@ -409,7 +616,7 @@ export default function VendorTenderBiddingPage() {
     return (
       <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-3">
         <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-semibold">Loading Tender Specifications & Bid Lock...</span>
+        <span className="text-sm font-semibold">Loading Tender Specifications &amp; Bid Lock...</span>
       </div>
     );
   }
@@ -466,13 +673,13 @@ export default function VendorTenderBiddingPage() {
             Department: <strong>{tender.department || "Medical College Procurement"}</strong> • {tender.items.length} Line Items
             {tender.boq_type === "COMMERCIAL" && (
               <span className="text-amber-700 font-semibold ml-2">
-                (Commercial Evaluation: Evaluated on Unit Supply & One-Time Charges)
+                (Commercial Evaluation: Evaluated on Unit Supply &amp; One-Time Charges)
               </span>
             )}
           </p>
         </div>
 
-        {/* Live Lock Timer Header */}
+        {/* Live Lock Timer & Navigation */}
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/vendor/dashboard"
@@ -494,18 +701,6 @@ export default function VendorTenderBiddingPage() {
             </div>
           )}
 
-          {tender.allow_download && (
-            <a
-              href={`${process.env.NEXT_PUBLIC_BACKEND_URL || ""}/api/v1/vendor/tenders/${tender.id}/download-template`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs border border-slate-300 transition-colors"
-            >
-              <span>📥</span>
-              <span>Download Excel Template (.xlsx)</span>
-            </a>
-          )}
-
           {tender.document_version_id && (
             <a
               href={`${process.env.NEXT_PUBLIC_BACKEND_URL || ""}/api/v1/vendor/tenders/${tender.id}/document`}
@@ -514,7 +709,7 @@ export default function VendorTenderBiddingPage() {
               className="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold text-xs border border-blue-200 transition-colors"
             >
               <span>📄</span>
-              <span>Download Original Tender BOQ Document</span>
+              <span>Download Admin Tender BOQ Document</span>
             </a>
           )}
         </div>
@@ -537,7 +732,99 @@ export default function VendorTenderBiddingPage() {
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* 1. OFFICIAL BOQ SCHEDULE CREATED BY ADMIN (EXACT ITEMS & SPECS VERBATIM) */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-800 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-xl shrink-0">
+              📋
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-black uppercase tracking-wider text-white">
+                  Official BOQ Schedule &amp; Scope of Supply
+                </h2>
+                <span className="text-[10px] bg-blue-500/30 text-blue-200 border border-blue-400/40 px-2 py-0.5 rounded-full font-bold">
+                  Created by Hospital Administration
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Read all equipment descriptions, technical specifications, and quantities verbatim before preparing your quotation.
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Total Line Items</span>
+            <span className="text-lg font-black text-amber-400 font-mono">{tender.items.length} Items</span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto max-h-[460px]">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead className="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200 sticky top-0 z-10 shadow-xs">
+              <tr>
+                <th className="px-4 py-3 w-16 text-center">Code</th>
+                <th className="px-4 py-3 min-w-[280px]">Item Description &amp; Technical Specifications</th>
+                <th className="px-4 py-3 min-w-[160px]">Attributes &amp; Compliance Standards</th>
+                <th className="px-4 py-3 w-24 text-center">Quantity</th>
+                <th className="px-4 py-3 w-24 text-center">UOM</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {tender.items.map((it, idx) => (
+                <tr key={it.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="px-4 py-3.5 text-center font-mono font-bold text-slate-600">
+                    {it.item_code || `#${idx + 1}`}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="font-bold text-slate-900 text-sm">{it.item_name}</div>
+                    {it.specifications ? (
+                      <div className="text-xs text-slate-600 mt-1.5 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-200/70 whitespace-pre-line font-mono text-[11px]">
+                        {it.specifications}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {Object.keys(it.attributes || {}).length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(it.attributes).map(([k, v]) => (
+                          <span
+                            key={k}
+                            className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-md font-semibold"
+                          >
+                            <strong className="text-blue-950">{k}:</strong> {v}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-[11px]">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5 text-center font-black text-slate-900 text-sm font-mono">
+                    {it.quantity}
+                  </td>
+                  <td className="px-4 py-3.5 text-center">
+                    <span className="font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded text-xs">
+                      {it.uom}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+          <span>👆 Exact BOQ created by hospital administration verbatim.</span>
+          <span className="text-slate-400">Target price &amp; estimated budgets are kept strictly confidential.</span>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
       {/* CASE 1: BID ALREADY SUBMITTED & LOCKED */}
+      {/* ========================================================================= */}
       {isSubmitted && !isEditingRevised && tender.submission ? (
         <div className="space-y-6">
           {/* Lock Banner */}
@@ -548,7 +835,7 @@ export default function VendorTenderBiddingPage() {
                   🔒
                 </span>
                 <h3 className="text-base font-black text-emerald-950">
-                  Bid Submitted & Sealed
+                  Bid Submitted &amp; Sealed
                 </h3>
               </div>
               <p className="text-xs text-emerald-800 mt-1 max-w-xl">
@@ -576,7 +863,7 @@ export default function VendorTenderBiddingPage() {
                     className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold border border-emerald-300 transition-colors shadow-xs"
                   >
                     <span>📥</span>
-                    <span>Download Your Submitted Quotation Document</span>
+                    <span>Download Your Submitted Quotation PDF</span>
                   </a>
                 </div>
               )}
@@ -590,8 +877,7 @@ export default function VendorTenderBiddingPage() {
                     type="button"
                     onClick={() => {
                       setIsEditingRevised(true);
-                      setActiveTab("FORM");
-                      window.scrollTo({ top: 0, behavior: "smooth" });
+                      window.scrollTo({ top: 400, behavior: "smooth" });
                     }}
                     className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-sm flex items-center space-x-1.5 self-start sm:self-auto"
                   >
@@ -614,189 +900,11 @@ export default function VendorTenderBiddingPage() {
             </div>
           </div>
 
-          {/* COMMERCIAL BOQ: Full Commercial Quote Breakdown */}
-          {tender.boq_type === "COMMERCIAL" && tender.submission.extracted_data?.commercial_breakdown && (() => {
-            const cb = tender.submission.extracted_data.commercial_breakdown;
-            const ct = tender.submission.extracted_data.commercial_terms || {};
-            return (
-              <div className="space-y-4">
-                {/* Part 1: Recurring Charges */}
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                  <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
-                    <span className="text-sm">🔁</span>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-amber-900">Part 1 — Recurring Charges</h4>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
-                        <tr>
-                          <th className="px-4 py-2.5">Description</th>
-                          <th className="px-4 py-2.5 text-right">Rate / Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {cb.gas_supply_rate_per_sm3 != null && (
-                          <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-800">
-                              Liquid Medical Oxygen — Gas Supply Rate
-                              <span className="ml-2 text-[10px] text-slate-400 font-normal">(per SM3)</span>
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono font-bold text-blue-800">
-                              ₹{Number(cb.gas_supply_rate_per_sm3).toLocaleString("en-IN", { minimumFractionDigits: 2 })}/SM3
-                              {cb.gas_supply_rate_per_kg && (
-                                <span className="text-slate-400 font-normal ml-1 text-[10px]">
-                                  (₹{Number(cb.gas_supply_rate_per_kg).toLocaleString("en-IN", { minimumFractionDigits: 2 })}/KG)
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                        {cb.monthly_facility_charge != null && (
-                          <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-800">Monthly Facility / Rental Charge</td>
-                            <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
-                              ₹{Number(cb.monthly_facility_charge).toLocaleString("en-IN", { minimumFractionDigits: 2 })}/Month
-                            </td>
-                          </tr>
-                        )}
-                        <tr className="hover:bg-slate-50/50">
-                          <td className="px-4 py-3 font-semibold text-slate-800">Freight Charges</td>
-                          <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
-                            {cb.freight_charges || "NIL"}
-                          </td>
-                        </tr>
-                        <tr className="hover:bg-slate-50/50">
-                          <td className="px-4 py-3 font-semibold text-slate-800">Taxes & Levies</td>
-                          <td className="px-4 py-3 text-right font-mono text-slate-700">GST Extra (as applicable)</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Part 2: One-Time Charges */}
-                {cb.one_time_charges && cb.one_time_charges.length > 0 && (
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                    <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-center gap-2">
-                      <span className="text-sm">🏗️</span>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-blue-900">Part 2 — One-Time Charges (SITC / Installation)</h4>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
-                          <tr>
-                            <th className="px-4 py-2.5">Charge Description</th>
-                            <th className="px-4 py-2.5 text-right">Amount (₹)</th>
-                            <th className="px-4 py-2.5">Remarks</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {cb.one_time_charges.map((ot: any, idx: number) => (
-                            <tr key={idx} className="hover:bg-slate-50/50">
-                              <td className="px-4 py-3 font-semibold text-slate-800">{ot.name}</td>
-                              <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
-                                ₹{Number(ot.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="px-4 py-3 text-slate-500">{ot.remarks || "—"}</td>
-                            </tr>
-                          ))}
-                          <tr className="bg-blue-50 font-black border-t border-blue-200">
-                            <td className="px-4 py-3 text-blue-900 uppercase text-[11px]">Total One-Time Cost</td>
-                            <td className="px-4 py-3 text-right font-mono text-blue-900">
-                              ₹{Number(cb.one_time_total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td></td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Part 3: Commercial Terms */}
-                {Object.keys(ct).some(k => ct[k]) && (
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                    <div className="px-5 py-3 bg-purple-50 border-b border-purple-200 flex items-center gap-2">
-                      <span className="text-sm">📋</span>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-purple-900">Part 3 — Commercial Terms & Conditions</h4>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
-                      {[
-                        { key: "agreement_tenure", label: "Agreement Tenure (LTA)" },
-                        { key: "lock_in_period", label: "Lock-In Period" },
-                        { key: "payment_terms_gas", label: "Payment Terms (Gas)" },
-                        { key: "payment_terms_sitc", label: "Payment Terms (SITC)" },
-                        { key: "price_escalation", label: "Price Escalation" },
-                        { key: "minimum_expected_volume", label: "Minimum Volume" },
-                        { key: "mode_of_delivery", label: "Mode of Delivery" },
-                        { key: "civil_work_scope", label: "Civil Work Scope" },
-                        { key: "delivery_time", label: "Delivery / Lead Time" },
-                      ].filter(f => ct[f.key]).map(f => (
-                        <div key={f.key} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase block">{f.label}</span>
-                          <span className="font-bold text-slate-800 text-xs mt-0.5 block">{ct[f.key]}</span>
-                        </div>
-                      ))}
-                      {cb.minimum_volume && (
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Minimum Volume Commitment</span>
-                          <span className="font-bold text-slate-800 text-xs mt-0.5 block">{cb.minimum_volume}</span>
-                        </div>
-                      )}
-                      {tender.submission.payment_terms && !ct["payment_terms_gas"] && (
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Payment Terms</span>
-                          <span className="font-bold text-slate-800 text-xs mt-0.5 block">{tender.submission.payment_terms}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Non-COMMERCIAL: Standard AI Extracted Terms Card */}
-          {tender.boq_type !== "COMMERCIAL" && (tender.submission.model_no || tender.submission.tank_capacity_location || tender.submission.payment_terms || tender.submission.delivery_time) && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                <span>📑</span>
-                <span>AI-Extracted Quotation Intelligence & Commercial Terms</span>
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-                {tender.submission.model_no && (
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Quoted Model / Make</span>
-                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.model_no}</span>
-                  </div>
-                )}
-                {tender.submission.tank_capacity_location && (
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Tank Capacity & Location</span>
-                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.tank_capacity_location}</span>
-                  </div>
-                )}
-                {tender.submission.payment_terms && (
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Payment Terms</span>
-                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.payment_terms}</span>
-                  </div>
-                )}
-                {tender.submission.delivery_time && (
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Delivery / Lead Time</span>
-                    <span className="font-bold text-slate-900 mt-0.5 block">{tender.submission.delivery_time}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Read-Only Submitted Breakdown (always shown) */}
+          {/* Submitted Quotation Item Breakdown Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="p-4 bg-slate-50 border-b border-slate-200">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                {tender.boq_type === "COMMERCIAL" ? "Recurring Gas Supply Rate (Primary BOQ Item)" : "Submitted Quotation Breakdown"}
+                Your Submitted Itemized Quotation
               </h4>
             </div>
 
@@ -849,7 +957,6 @@ export default function VendorTenderBiddingPage() {
                     );
                   })}
 
-                  {/* Totals */}
                   <tr className="bg-slate-50 font-bold border-t border-slate-200">
                     <td colSpan={6} className="px-4 py-3 text-right text-slate-600 uppercase">
                       Sub Total (INR):
@@ -891,7 +998,7 @@ export default function VendorTenderBiddingPage() {
           </div>
           <h3 className="text-lg font-bold text-slate-900">Tender Submission Window Closed</h3>
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-            The deadline for submitting quotations for this tender has passed. Submissions are strictly locked. Please contact JECRC Procurement for queries.
+            The deadline for submitting quotations for this tender has passed. Submissions are strictly locked. Please contact Procurement Administration for queries.
           </p>
         </div>
       ) : (
@@ -918,7 +1025,7 @@ export default function VendorTenderBiddingPage() {
                 onClick={() => setIsEditingRevised(false)}
                 className="px-4 py-2 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl font-bold text-xs transition-colors whitespace-nowrap self-start md:self-auto"
               >
-                ✕ Cancel Revision & View Sealed Quote
+                ✕ Cancel Revision &amp; View Sealed Quote
               </button>
             </div>
           )}
@@ -933,57 +1040,275 @@ export default function VendorTenderBiddingPage() {
             </div>
           )}
 
-          {/* Submission Mode Tabs */}
-          <div className="flex border-b border-slate-200 bg-white p-2 rounded-2xl shadow-xs gap-2">
-            <button
-              onClick={() => setActiveTab("FORM")}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 ${
-                activeTab === "FORM"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <span>✍️</span>
-              <span>Fill Online Web Form</span>
-            </button>
+          {/* ========================================================================= */}
+          {/* 2. STRICTLY TWO SUBMISSION WAYS: 1) RAW TEXT, 2) PDF QUOTATION           */}
+          {/* ========================================================================= */}
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                  <span>💼</span>
+                  <span>Quotation Submission Method</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Select your preferred way to quote: write/paste raw text like admin does, or upload your PDF quotation.
+                </p>
+              </div>
 
-            <button
-              onClick={() => setActiveTab("EXCEL")}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 ${
-                activeTab === "EXCEL"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <span>📊</span>
-              <span>Upload Filled Excel Sheet</span>
-            </button>
+              {/* The Two Allowed Submission Tabs */}
+              <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("RAW_TEXT")}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                    activeTab === "RAW_TEXT"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span>📝</span>
+                  <span>1. Write / Paste Raw Text</span>
+                </button>
 
-            <button
-              onClick={() => setActiveTab("PDF")}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 ${
-                activeTab === "PDF"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <span>📄</span>
-              <span>Upload Signed PDF Quote (AI Auto-Parse)</span>
-            </button>
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("PDF")}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                    activeTab === "PDF"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span>📄</span>
+                  <span>2. Submit PDF Quotation</span>
+                </button>
+              </div>
+            </div>
 
-          {/* TAB 1: INTERACTIVE WEB FORM */}
-          {activeTab === "FORM" && (
-            <div className="space-y-6">
+            {/* --------------------------------------------------------------------- */}
+            {/* WAY 1: WRITE / PASTE RAW TEXT QUOTATION                               */}
+            {/* --------------------------------------------------------------------- */}
+            {activeTab === "RAW_TEXT" && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 flex items-center space-x-2">
+                      <span>📝</span>
+                      <span>Type or Paste Raw Quotation Text</span>
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Type your quoted rates line-by-line, or paste from your proposal / email. Click <strong>&quot;Load Quoted Rates&quot;</strong> or <strong>&quot;AI Extract&quot;</strong> to populate the review table below.
+                    </p>
+                  </div>
+
+                  {/* Template Quick Insert */}
+                  <button
+                    type="button"
+                    onClick={handleInsertBoqTemplate}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 self-start md:self-auto shrink-0 shadow-xs"
+                    title="Pre-populate the text box with the admin's exact BOQ line items"
+                  >
+                    <span>📋</span>
+                    <span>Insert BOQ Items Template</span>
+                  </button>
+                </div>
+
+                {/* Raw Textarea */}
+                <div className="relative">
+                  <textarea
+                    rows={9}
+                    value={rawTextQuote}
+                    onChange={(e) => setRawTextQuote(e.target.value)}
+                    placeholder={`Example:\n1. Liquid Medical Oxygen (LMO) - Rate: 15.50 / SM3 | Make: Inox Air Products | GST: 18% | COMPLIANT\n2. Vacuum Insulated Storage Tank 20KL - Rate: 3800000 | Make: VRV / Chart Industries | GST: 18% | COMPLIANT\n3. Ambient Air Vaporizer 500 Nm3/hr - Rate: 750000 | Make: Inox India | GST: 18% | COMPLIANT\n\nCommercial Terms:\nPayment Terms: 30 Days against delivery and acceptance\nDelivery Period: 4 to 6 Weeks from PO\nWarranty Terms: 12 Months Comprehensive`}
+                    className="w-full p-4 font-mono text-xs rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50/50 leading-relaxed text-slate-900 placeholder:text-slate-400"
+                  />
+                  {rawTextQuote && (
+                    <button
+                      type="button"
+                      onClick={() => setRawTextQuote("")}
+                      className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 text-xs px-2 py-1 bg-white border border-slate-200 rounded-md font-bold shadow-xs"
+                      title="Clear textarea"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {/* Action Buttons for Raw Text */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <div className="text-[11px] text-slate-500 flex items-center space-x-1">
+                    <span>💡</span>
+                    <span>Instant match uses local pattern recognition; AI extraction handles any unstructured quotation style.</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleInstantParseRawText}
+                      disabled={parsingText || !rawTextQuote.trim()}
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center space-x-1.5 disabled:opacity-50"
+                    >
+                      <span>⚡</span>
+                      <span>Load Quoted Rates (Instant Match)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleAIExtractRawText}
+                      disabled={parsingText || !rawTextQuote.trim()}
+                      className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center space-x-1.5 disabled:opacity-50"
+                    >
+                      <span>{parsingText ? "⏳" : "🤖"}</span>
+                      <span>{parsingText ? "Gemini AI Extracting..." : "AI Extract with Gemini"}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* --------------------------------------------------------------------- */}
+            {/* WAY 2: UPLOAD PDF QUOTATION                                           */}
+            {/* --------------------------------------------------------------------- */}
+            {activeTab === "PDF" && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <input
+                  type="file"
+                  ref={pdfInputRef}
+                  accept=".pdf"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handlePdfFileSelect(e.target.files[0]);
+                    }
+                  }}
+                  className="hidden"
+                />
+
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingPdf(true);
+                  }}
+                  onDragLeave={() => setIsDraggingPdf(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingPdf(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      handlePdfFileSelect(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  onClick={() => !selectedPdf && pdfInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
+                    isDraggingPdf
+                      ? "border-blue-500 bg-blue-50/50"
+                      : selectedPdf
+                      ? "border-emerald-300 bg-emerald-50/20"
+                      : "border-slate-300 hover:border-blue-400 bg-slate-50/50"
+                  }`}
+                >
+                  <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl">
+                    📄
+                  </div>
+
+                  {!selectedPdf ? (
+                    <>
+                      <h4 className="text-sm font-bold text-slate-900 mb-1">
+                        Select or Drag &amp; Drop Your PDF Quotation
+                      </h4>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
+                        Upload your official signed quotation document in PDF format (maximum size: 7 MB).
+                      </p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          pdfInputRef.current?.click();
+                        }}
+                        className="px-5 py-2 bg-white hover:bg-slate-50 text-blue-700 font-bold text-xs border border-blue-200 rounded-xl shadow-xs transition-colors"
+                      >
+                        Browse PDF File
+                      </button>
+                    </>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="inline-flex items-center space-x-3 px-4 py-2.5 bg-white border border-emerald-300 rounded-xl shadow-xs">
+                        <span className="text-emerald-600 text-lg">📄</span>
+                        <div className="text-left">
+                          <span className="text-xs font-bold text-slate-900 block truncate max-w-sm">
+                            {selectedPdf.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {(selectedPdf.size / 1024).toFixed(1)} KB • PDF Document
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPdf(null);
+                          }}
+                          className="text-slate-400 hover:text-red-600 text-xs font-bold ml-2"
+                          title="Change file"
+                        >
+                          ✕ Change
+                        </button>
+                      </div>
+
+                      {uploadingPdf || parsingPdf ? (
+                        <div className="flex flex-col items-center space-y-2 py-2">
+                          <div className="w-7 h-7 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-xs font-bold text-blue-700">
+                            {parsingPdf
+                              ? "Gemini AI is parsing PDF chunks into the review table below..."
+                              : "Uploading and sealing PDF quotation..."}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleParsePdfIntoForm();
+                            }}
+                            className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-1.5"
+                          >
+                            <span>⚡</span>
+                            <span>Extract PDF Rates into Review Table (Recommended)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDirectSubmitPdf();
+                            }}
+                            className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-1.5"
+                          >
+                            <span>🔒</span>
+                            <span>Direct Submit &amp; Seal PDF</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* 3. QUOTATION BREAKDOWN & COMMERCIAL TERMS VERIFICATION TABLE              */}
+            {/* ========================================================================= */}
+            <div ref={quotationSectionRef} className="space-y-6 pt-2">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
                 {/* Table Top Toolbar with Bulk Actions */}
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                   <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Line Item Pricing &amp; Technical Compliance
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center space-x-1.5">
+                      <span>📊</span>
+                      <span>Itemized Quotation Pricing &amp; Verification</span>
                     </span>
-                    <span className="text-[11px] text-slate-500 block">
-                      Enter your quoted unit rate and model specifications for each line item.
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Verify your unit rates, quoted make/model, and GST % for each line item before submitting.
                     </span>
                   </div>
 
@@ -1021,7 +1346,7 @@ export default function VendorTenderBiddingPage() {
                       <tr>
                         <th className="px-3 py-3 w-14 text-center sticky left-0 z-30 bg-slate-100">Code</th>
                         <th className="px-3 py-3 min-w-[220px] sticky left-14 z-30 bg-slate-100 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
-                          Item Description &amp; Specs
+                          Item Description
                         </th>
                         <th className="px-3 py-3 w-16 text-center">Qty</th>
                         <th className="px-3 py-3 w-16 text-center">UOM</th>
@@ -1054,23 +1379,9 @@ export default function VendorTenderBiddingPage() {
                               {it.item_code || "-"}
                             </td>
 
-                            {/* Sticky Column 2: Name & Specs */}
+                            {/* Sticky Column 2: Name */}
                             <td className="px-3 py-3 sticky left-14 z-10 bg-white group-hover:bg-slate-50 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                               <div className="font-bold text-slate-900">{it.item_name}</div>
-                              {it.specifications && (
-                                <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2" title={it.specifications}>
-                                  {it.specifications}
-                                </p>
-                              )}
-                              {Object.keys(it.attributes || {}).length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {Object.entries(it.attributes).map(([k, v]) => (
-                                    <span key={k} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
-                                      {k}: {v}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
                             </td>
 
                             {/* Qty & UOM */}
@@ -1081,7 +1392,7 @@ export default function VendorTenderBiddingPage() {
                             <td className="px-2 py-2">
                               <input
                                 type="text"
-                                placeholder="e.g. Siemens / Philips"
+                                placeholder="e.g. Inox Air / VRV / Philips"
                                 value={formVal.make_model_quoted}
                                 onChange={(e) => handleFormItemChange(it.id, "make_model_quoted", e.target.value)}
                                 className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
@@ -1155,7 +1466,9 @@ export default function VendorTenderBiddingPage() {
                 {/* Calculation Summary Bar */}
                 <div className="bg-slate-900 text-white p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div className="space-y-1">
-                    <span className="text-xs text-slate-400 font-medium">Estimated Commercial Summary</span>
+                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">
+                      Commercial Quotation Summary
+                    </span>
                     <div className="flex items-center space-x-6 text-xs">
                       <div>
                         <span className="text-slate-400">Sub Total: </span>
@@ -1182,7 +1495,7 @@ export default function VendorTenderBiddingPage() {
                       disabled={savingDraft || submitting}
                       onClick={handleSaveDraft}
                       className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs rounded-xl transition-all border border-slate-700 flex items-center space-x-1.5 disabled:opacity-50"
-                      title="Save your quotation progress without submitting"
+                      title="Save your quotation progress without locking"
                     >
                       <span>{savingDraft ? "⏳" : "💾"}</span>
                       <span>{savingDraft ? "Saving Draft..." : "Save Draft"}</span>
@@ -1239,146 +1552,7 @@ export default function VendorTenderBiddingPage() {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* TAB 2: EXCEL UPLOAD */}
-          {activeTab === "EXCEL" && (
-            <div className="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-12 text-center shadow-xs">
-              {/* Hidden file input for Preview/Extract */}
-              <input
-                type="file"
-                ref={previewFileInputRef}
-                accept=".xlsx,.xls"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleParseFileIntoForm(e.target.files[0]);
-                  }
-                }}
-                className="hidden"
-              />
-
-              {/* Hidden file input for Direct Submit */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".xlsx,.xls"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileUploadSubmit(e.target.files[0]);
-                  }
-                }}
-                className="hidden"
-              />
-
-              <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
-                📊
-              </div>
-              <h3 className="text-base font-bold text-slate-900 mb-1">Upload Completed Excel Bidding Template</h3>
-              <p className="text-xs text-slate-500 max-w-lg mx-auto mb-6">
-                Upload your completed Excel sheet. You can either extract rates into the interactive web form to review line-by-line first, or submit and seal directly.
-              </p>
-
-              {uploading || parsingFile ? (
-                <div className="flex flex-col items-center space-y-2 py-4">
-                  <div className="w-7 h-7 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold text-emerald-700">
-                    {parsingFile ? "Extracting rates into interactive form..." : "Reading Excel quotes & sealing bid..."}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => previewFileInputRef.current?.click()}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-1.5"
-                  >
-                    <span>⚡</span>
-                    <span>Extract &amp; Review in Form (Recommended)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-1.5"
-                  >
-                    <span>🔒</span>
-                    <span>Direct Submit &amp; Seal</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 3: PDF QUOTATION UPLOAD (AI EXTRACTION) */}
-          {activeTab === "PDF" && (
-            <div className="bg-white rounded-2xl border-2 border-dashed border-blue-300 p-12 text-center shadow-xs">
-              {/* Hidden file input for Preview/Extract */}
-              <input
-                type="file"
-                ref={previewFileInputRef}
-                accept=".pdf"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleParseFileIntoForm(e.target.files[0]);
-                  }
-                }}
-                className="hidden"
-              />
-
-              {/* Hidden file input for Direct Submit */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".pdf"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileUploadSubmit(e.target.files[0]);
-                  }
-                }}
-                className="hidden"
-              />
-
-              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
-                🤖
-              </div>
-              <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-[10px] font-black rounded-full mb-2 uppercase tracking-wide">
-                Multi-Page Chunked Extraction
-              </span>
-              <h3 className="text-base font-bold text-slate-900 mb-1">Upload Signed PDF Quotation (AI Chunked Parsing)</h3>
-              <p className="text-xs text-slate-500 max-w-lg mx-auto mb-6">
-                Upload your formal signed quotation PDF. You can preview all AI-extracted rates and terms in the web form first, or submit and seal directly.
-              </p>
-
-              {uploading || parsingFile ? (
-                <div className="flex flex-col items-center space-y-2 py-4">
-                  <div className="w-7 h-7 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold text-blue-700">
-                    {parsingFile ? "Gemini AI is parsing PDF chunks into web form..." : "Gemini AI is parsing PDF quotation in chunks & sealing bid..."}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => previewFileInputRef.current?.click()}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-1.5"
-                  >
-                    <span>⚡</span>
-                    <span>AI Extract &amp; Review in Form (Recommended)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-1.5"
-                  >
-                    <span>🔒</span>
-                    <span>Direct Submit &amp; Seal</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+          </div>
         </div>
       )}
 

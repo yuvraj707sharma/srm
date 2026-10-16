@@ -21,7 +21,8 @@ from app.services.storage.local import LocalStorageService
 from app.services.document import DocumentService
 from app.services.boq import (
     generate_boq_excel_template,
-    parse_vendor_submission_file
+    parse_vendor_submission_file,
+    parse_vendor_submission_raw_text
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,9 @@ def get_vendor_org_id(user: User = Depends(get_current_user)) -> str:
 # -------------------------------------------------------------------------
 # Pydantic Schemas
 # -------------------------------------------------------------------------
+
+class ParseBidTextPayload(BaseModel):
+    raw_text: str
 
 class BidItemPayload(BaseModel):
     boq_item_id: str
@@ -444,6 +448,44 @@ async def parse_vendor_bid_file_preview(
     return {
         "status": "success",
         "filename": file.filename,
+        "parsed_bid": parsed_bid
+    }
+
+
+@router.post("/{boq_id}/parse-bid-text")
+async def parse_vendor_bid_text_preview(
+    boq_id: str,
+    payload: ParseBidTextPayload,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    vendor_org_id: str = Depends(get_vendor_org_id)
+):
+    """
+    Parses vendor's written or pasted quotation text (raw text) using Gemini AI,
+    mapping quotes directly onto the tender's BOQ items.
+    Allows the vendor to preview and review the parsed numbers before submitting.
+    """
+    stmt = (
+        select(BOQ)
+        .options(selectinload(BOQ.items))
+        .where(BOQ.id == boq_id)
+    )
+    res = await db.execute(stmt)
+    boq = res.scalar_one_or_none()
+    if not boq:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    if not payload.raw_text.strip():
+        raise HTTPException(status_code=400, detail="Please enter or paste quotation text.")
+
+    try:
+        parsed_bid = await parse_vendor_submission_raw_text(boq, payload.raw_text, "Vendor Typed Quotation")
+    except Exception as e:
+        logger.error(f"Failed to parse vendor quotation raw text: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to parse quotation text: {str(e)}")
+
+    return {
+        "status": "success",
         "parsed_bid": parsed_bid
     }
 
