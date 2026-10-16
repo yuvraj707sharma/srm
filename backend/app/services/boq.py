@@ -309,17 +309,50 @@ def _fallback_heuristic_extraction(raw_text: str) -> List[Dict[str, Any]]:
         if stripped.startswith("---") or stripped.lower().startswith("slide "):
             continue
 
-        # Remove leading list numbers like 1., 1), 1 -, etc.
-        clean_text = re.sub(r'^\d+[\.\)\-\:\s]+', '', stripped).strip()
+        lower_line = stripped.lower()
+        # Skip metadata header lines so they never become fake line items
+        if (
+            lower_line.startswith("project title:") or
+            lower_line.startswith("project:") or
+            lower_line.startswith("tender title:") or
+            lower_line.startswith("title:") or
+            lower_line.startswith("department:") or
+            lower_line.startswith("dept:") or
+            lower_line.startswith("scope of work:") or
+            lower_line.startswith("scope:") or
+            lower_line.startswith("description:") or
+            lower_line.startswith("objective:") or
+            lower_line.startswith("tender ref:") or
+            lower_line.startswith("tender number:") or
+            lower_line.startswith("tender #:") or
+            lower_line.startswith("hospital details") or
+            lower_line.startswith("commercial terms") or
+            lower_line.startswith("payment terms:") or
+            lower_line.startswith("delivery period:") or
+            lower_line.startswith("warranty terms:")
+        ):
+            continue
+
+        # Remove leading list numbers like 1., 1), 1 -, ITEM-001:, etc.
+        clean_text = re.sub(r'^(item[\s\-_]*\d+[\.:\s]*|\d+[\.\)\-:]\s*|[\-\*•▪]\s*)', '', stripped, flags=re.IGNORECASE).strip()
         if not clean_text or clean_text.lower() in seen_names:
             continue
 
         item_name = clean_text
+        specs = None
         qty = 1.0
         uom = "Nos"
 
-        # Check delimiter patterns: Pipe |, Tab \t, or comma
-        if "|" in clean_text:
+        # Check for pipe delimiters: e.g. "Item Name - Specs | Qty: 1 | UOM: SET"
+        pipe_match = re.search(r'\|\s*(?:qty|quantity)?\s*[:=-]?\s*(\d+(?:\.\d+)?)\s*\|\s*(?:uom)?\s*[:=-]?\s*([a-zA-Z0-9]+)', clean_text, re.IGNORECASE)
+        if pipe_match:
+            try:
+                qty = float(pipe_match.group(1))
+            except Exception:
+                qty = 1.0
+            uom = pipe_match.group(2).strip()
+            item_name = clean_text[:pipe_match.start()].strip()
+        elif "|" in clean_text:
             parts = [p.strip() for p in clean_text.split("|") if p.strip()]
             item_name = parts[0]
             if len(parts) >= 2:
@@ -328,7 +361,9 @@ def _fallback_heuristic_extraction(raw_text: str) -> List[Dict[str, Any]]:
                 except Exception:
                     pass
             if len(parts) >= 3:
-                uom = parts[2]
+                uom_candidate = parts[2].replace("UOM:", "").replace("uom:", "").strip()
+                if uom_candidate:
+                    uom = uom_candidate
         elif "\t" in clean_text:
             parts = [p.strip() for p in clean_text.split("\t") if p.strip()]
             item_name = parts[0]
@@ -338,7 +373,9 @@ def _fallback_heuristic_extraction(raw_text: str) -> List[Dict[str, Any]]:
                 except Exception:
                     pass
             if len(parts) >= 3:
-                uom = parts[2]
+                uom_candidate = parts[2].replace("UOM:", "").replace("uom:", "").strip()
+                if uom_candidate:
+                    uom = uom_candidate
         else:
             # Check for trailing quantity and UOM, e.g. " - 13000 SM3" or " 12 Monthly"
             m = re.search(r'[-–—:]\s*(\d+(?:\.\d+)?)\s*([a-zA-Z0-9\s]+)$', clean_text)
@@ -352,12 +389,12 @@ def _fallback_heuristic_extraction(raw_text: str) -> List[Dict[str, Any]]:
                         item_name = clean_text[:m.start()].strip().rstrip("-–—: ")
                 except Exception:
                     pass
-            else:
-                # Infer common UOM from parentheses
-                for u in ["monthly", "one time", "nos", "set", "sm3"]:
-                    if clean_text.lower().endswith(f"({u})"):
-                        uom = u.title() if u != "sm3" else "SM3"
-                        break
+
+        # Split Item Name & Specifications if " - " or " | " delimiter is present
+        if " - " in item_name:
+            parts = item_name.split(" - ", 1)
+            item_name = parts[0].strip()
+            specs = parts[1].strip()
 
         # Remove bullet marks
         item_name = re.sub(r'^[•\-\*]\s*', '', item_name).strip()
@@ -368,7 +405,7 @@ def _fallback_heuristic_extraction(raw_text: str) -> List[Dict[str, Any]]:
         items.append({
             "item_code": f"ITEM-{len(items)+1:03d}",
             "item_name": item_name,
-            "specifications": None,
+            "specifications": specs,
             "quantity": qty,
             "uom": uom,
             "category": "Line Item",

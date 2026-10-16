@@ -120,51 +120,132 @@ export default function CreateBOQPage() {
     const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
 
-    const noiseKeywords = [
-      "slide ", "hospital details", "estimated oxygen demand", "plant room setup",
-      "why lmo", "primary, secondary", "safe plant room layout", "continuous bulk",
-      "better pressure", "compliant with", "census beds", "objective", "standards &",
-      "applicable standards", "compliance requirements", "system components", "plant room requirements",
-      "civil requirements", "utility requirements", "safety requirements", "comparison of",
-      "vendor evaluation", "proposed timeline", "recommended scope"
-    ];
+    let detectedTitle = title;
+    let detectedDept = department;
+    let detectedDesc = description;
+    let detectedTenderNo = tenderNumber;
 
     const parsed: ExtractedItem[] = [];
     let count = 1;
 
     for (const rawLine of lines) {
       const lower = rawLine.toLowerCase();
-      // Skip obvious noise section headings when large multiline text is pasted
-      if (lines.length > 5 && (rawLine.endsWith(":") || noiseKeywords.some(k => lower === k || lower.startsWith(k + ":")))) {
+
+      // 1. Detect & Extract Document Metadata Headers (Never treat these as line items!)
+      if (lower.startsWith("project title:") || lower.startsWith("project:") || lower.startsWith("tender title:") || lower.startsWith("title:")) {
+        const val = rawLine.substring(rawLine.indexOf(":") + 1).trim();
+        if (val) {
+          detectedTitle = val;
+          setTitle(val);
+        }
         continue;
       }
 
-      // Strip leading numbering or bullet prefixes: "1.", "1)", "-", "•"
-      let cleanLine = rawLine.replace(/^(\d+[\.\)\-:]\s*|[\-\*•▪]\s*)/, "").trim();
-      if (!cleanLine) continue;
+      if (lower.startsWith("department:") || lower.startsWith("dept:")) {
+        const val = rawLine.substring(rawLine.indexOf(":") + 1).trim();
+        if (val) {
+          detectedDept = val;
+          setDepartment(val);
+        }
+        continue;
+      }
+
+      if (lower.startsWith("scope of work:") || lower.startsWith("scope:") || lower.startsWith("objective:") || lower.startsWith("description:")) {
+        const val = rawLine.substring(rawLine.indexOf(":") + 1).trim();
+        if (val) {
+          detectedDesc = val;
+          setDescription(val);
+        }
+        continue;
+      }
+
+      if (lower.startsWith("tender ref #:") || lower.startsWith("tender ref:") || lower.startsWith("tender number:") || lower.startsWith("tender #:")) {
+        const val = rawLine.substring(rawLine.indexOf(":") + 1).trim();
+        if (val) {
+          detectedTenderNo = val;
+          setTenderNumber(val);
+        }
+        continue;
+      }
+
+      // Skip noise section headers, slide markers, or commercial terms headers
+      if (
+        rawLine.endsWith(":") ||
+        lower.startsWith("slide ") ||
+        lower.startsWith("hospital details") ||
+        lower.startsWith("commercial terms") ||
+        lower.startsWith("payment terms:") ||
+        lower.startsWith("delivery period:") ||
+        lower.startsWith("warranty terms:")
+      ) {
+        continue;
+      }
+
+      // Strip leading numbering or bullet prefixes: "1.", "1)", "1 -", "ITEM-001:", "•", "-"
+      let cleanLine = rawLine.replace(/^(item[\s\-_]*\d+[\.:\s]*|\d+[\.\)\-:]\s*|[\-\*•▪]\s*)/i, "").trim();
+      if (!cleanLine || cleanLine.length < 2) continue;
 
       let qty = 1;
       let uom = "Nos";
+      let specs = "";
+      let itemName = cleanLine;
 
-      // Detect common UOM / quantity patterns e.g. "1000 SM3", "20 KL", "1 Nos", "1 Lot"
-      const qtyUomMatch = cleanLine.match(/[\-–—:]?\s*(\d+(?:\.\d+)?)\s*(SM3|KL|Nos|Sets|Mtr|Kg|Ltr|Pcs|Units|Months|Years|Lot)\b/i);
-      if (qtyUomMatch) {
-        qty = parseFloat(qtyUomMatch[1]) || 1;
-        uom = qtyUomMatch[2];
+      // 2. Extract Quantity and UOM from Pipe Delimiters or tags
+      // E.g. "| Qty: 1 | UOM: SET" or "| Quantity: 1 | UOM: NOS" or "| 1 | SET"
+      const pipeMatch = cleanLine.match(/\|\s*(?:qty|quantity)?\s*[:=-]?\s*(\d+(?:\.\d+)?)\s*\|\s*(?:uom)?\s*[:=-]?\s*([a-zA-Z0-9]+)/i);
+      if (pipeMatch) {
+        qty = parseFloat(pipeMatch[1]) || 1;
+        uom = pipeMatch[2].trim();
+        itemName = cleanLine.replace(pipeMatch[0], "").trim();
+      } else {
+        const qtyMatch = cleanLine.match(/\|\s*(?:qty|quantity)\s*[:=-]?\s*(\d+(?:\.\d+)?)/i);
+        if (qtyMatch) {
+          qty = parseFloat(qtyMatch[1]) || 1;
+          itemName = itemName.replace(qtyMatch[0], "").trim();
+        }
+        const uomMatch = cleanLine.match(/\|\s*uom\s*[:=-]?\s*([a-zA-Z0-9]+)/i);
+        if (uomMatch) {
+          uom = uomMatch[1].trim();
+          itemName = itemName.replace(uomMatch[0], "").trim();
+        }
+
+        // Check for trailing e.g. " - 1000 SM3" or " 12 Monthly"
+        const trailingMatch = itemName.match(/[-–—:]\s*(\d+(?:\.\d+)?)\s*(SM3|KL|Nos|Sets?|Mtr|Kg|Ltr|Pcs|Units?|Months?|Years?|Lots?)\b/i);
+        if (trailingMatch) {
+          qty = parseFloat(trailingMatch[1]) || 1;
+          uom = trailingMatch[2];
+          itemName = itemName.replace(trailingMatch[0], "").trim();
+        }
+      }
+
+      // Clean any stray pipes from the ends of itemName
+      itemName = itemName.replace(/\|\s*$/, "").replace(/^\s*\|/, "").trim();
+
+      // 3. Separate Item Name and Specifications if hyphen delimiter exists
+      // E.g. "High-Frequency System (500mA / 65kW) - Dual Flat Panel CsI Detectors..."
+      if (itemName.includes(" - ")) {
+        const parts = itemName.split(" - ");
+        itemName = parts[0].trim();
+        specs = parts.slice(1).join(" - ").trim();
+      } else if (itemName.includes(" | ")) {
+        const parts = itemName.split(" | ");
+        itemName = parts[0].trim();
+        specs = parts.slice(1).join(" | ").trim();
       }
 
       parsed.push({
         item_code: `ITEM-${String(count).padStart(3, "0")}`,
-        item_name: cleanLine,
+        item_name: itemName,
         quantity: qty,
         uom: uom,
-        specifications: "",
+        specifications: specs || "",
       });
       count++;
     }
 
     if (parsed.length > 0) {
       setItems(parsed);
+      setExtractionMsg(`Loaded ${parsed.length} line items with exact specifications, quantities & UOM!`);
     } else {
       setItems(lines.map((l, idx) => ({
         item_code: `ITEM-${String(idx + 1).padStart(3, "0")}`,
