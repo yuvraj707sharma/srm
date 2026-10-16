@@ -280,3 +280,251 @@ async def register_vendor(
     if settings.ENVIRONMENT != "production":
         resp_data["dev_otp"] = otp_code
     return resp_data
+
+
+# -------------------------------------------------------------------------
+# DEMO VENDORS SEEDING & CREDENTIALS ENDPOINTS
+# -------------------------------------------------------------------------
+
+DEMO_VENDORS_DATA = [
+    {
+        "id": "demo-vendor-1",
+        "email": "inox@demo.com",
+        "alt_email": "inox@test.com",
+        "name": "Siddharth Sharma (INOX Gas Division)",
+        "org_name": "INOX Air Products Private Limited",
+        "trade_name": "INOX Air Products",
+        "vendor_code": "VEND-INOX-01",
+        "phone": "+91 98290 11111",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "pan": "AAACI1234F",
+        "gstin": "27AAACI1234F1Z5",
+        "specialty": "Liquid Medical Oxygen (LMO), Bulk Cryogenic Storage Tanks"
+    },
+    {
+        "id": "demo-vendor-2",
+        "email": "linde@demo.com",
+        "alt_email": "linde@test.com",
+        "name": "Rajesh Verma (Linde Healthcare)",
+        "org_name": "Linde India Limited",
+        "trade_name": "Linde Healthcare",
+        "vendor_code": "VEND-LINDE-02",
+        "phone": "+91 98290 22222",
+        "city": "Kolkata",
+        "state": "West Bengal",
+        "pan": "AAACL5678G",
+        "gstin": "19AAACL5678G1Z2",
+        "specialty": "Cryogenic Tanks, Ambient Vaporizers, Medical Gas Pipelines"
+    },
+    {
+        "id": "demo-vendor-3",
+        "email": "airliquide@demo.com",
+        "alt_email": "airliquide@test.com",
+        "name": "Amitabh Roy (Air Liquide Medical)",
+        "org_name": "Air Liquide India Holding Private Limited",
+        "trade_name": "Air Liquide Healthcare",
+        "vendor_code": "VEND-AIRLIQ-03",
+        "phone": "+91 98290 33333",
+        "city": "Gurugram",
+        "state": "Haryana",
+        "pan": "AAACA9012H",
+        "gstin": "06AAACA9012H1Z8",
+        "specialty": "Hospital LMO Systems, Cryogenic Equipment, Turnkey SITC"
+    },
+    {
+        "id": "demo-vendor-4",
+        "email": "vayu@demo.com",
+        "alt_email": "vayu@test.com",
+        "name": "Vikas Meena (Vayu Cryogenics)",
+        "org_name": "Vayu Products Private Limited",
+        "trade_name": "Vayu Medical Cryogenics",
+        "vendor_code": "VEND-VAYU-04",
+        "phone": "+91 98290 44444",
+        "city": "Jaipur",
+        "state": "Rajasthan",
+        "pan": "AAACV3456J",
+        "gstin": "08AAACV3456J1Z1",
+        "specialty": "Local Rajasthan Medical Oxygen Supply & Maintenance"
+    },
+    {
+        "id": "demo-vendor-5",
+        "email": "shakti@demo.com",
+        "alt_email": "shakti@test.com",
+        "name": "Pradeep Agarwal (Shakti Group)",
+        "org_name": "Shakti Cryogenics Private Limited",
+        "trade_name": "Shakti Gas Systems",
+        "vendor_code": "VEND-SHAKTI-05",
+        "phone": "+91 98290 55555",
+        "city": "Ahmedabad",
+        "state": "Gujarat",
+        "pan": "AAACS7890K",
+        "gstin": "24AAACS7890K1Z4",
+        "specialty": "Vaporizers, Pressure Regulating Skids & Manifolds"
+    }
+]
+
+
+@router.get("/demo-vendors")
+async def list_demo_vendors():
+    """
+    Returns available demo accounts for quick testing and quotation submission.
+    """
+    return {
+        "admin": {
+            "email": "admin@test.com",
+            "password": "password123",
+            "name": "Procurement Administrator",
+            "role": "ADMIN"
+        },
+        "vendors": [
+            {
+                "email": v["email"],
+                "password": "password123",
+                "org_name": v["org_name"],
+                "trade_name": v["trade_name"],
+                "contact_person": v["name"],
+                "phone": v["phone"],
+                "specialty": v["specialty"]
+            }
+            for v in DEMO_VENDORS_DATA
+        ]
+    }
+
+
+@router.post("/seed-demo-vendors")
+async def seed_demo_vendors(db: AsyncSession = Depends(get_db)):
+    """
+    Idempotently seeds or refreshes the 5 demo vendor organizations and users,
+    setting status='APPROVED' and password='password123', so quotations can be submitted.
+    """
+    from sqlalchemy.orm import selectinload
+    import uuid
+
+    # 1. Ensure Roles
+    res_vrole = await db.execute(select(Role).where(Role.name == "VENDOR"))
+    vendor_role = res_vrole.scalar_one_or_none()
+    if not vendor_role:
+        vendor_role = Role(name="VENDOR", description="Vendor Organization Role")
+        db.add(vendor_role)
+        await db.flush()
+
+    res_arole = await db.execute(select(Role).where(Role.name == "ADMIN"))
+    admin_role = res_arole.scalar_one_or_none()
+    if not admin_role:
+        admin_role = Role(name="ADMIN", description="System Administrator Role")
+        db.add(admin_role)
+        await db.flush()
+
+    seeded_list = []
+
+    # 2. Seed / Update 5 Demo Vendors
+    for vinfo in DEMO_VENDORS_DATA:
+        # Organization
+        stmt_org = select(VendorOrganization).where(
+            (VendorOrganization.legal_name == vinfo["org_name"]) |
+            (VendorOrganization.vendor_code == vinfo["vendor_code"])
+        )
+        res_org = await db.execute(stmt_org)
+        org = res_org.scalars().first()
+
+        if not org:
+            org = VendorOrganization(
+                id=str(uuid.uuid4()),
+                legal_name=vinfo["org_name"],
+                trade_name=vinfo["trade_name"],
+                display_name=vinfo["trade_name"],
+                vendor_code=vinfo["vendor_code"],
+                organization_type="Private Limited",
+                country="India",
+                city=vinfo["city"],
+                state_province=vinfo["state"],
+                primary_phone=vinfo["phone"],
+                primary_email=vinfo["email"],
+                pan_number=vinfo["pan"],
+                gstin=vinfo["gstin"],
+                status="APPROVED",
+                verification_status="VERIFIED"
+            )
+            db.add(org)
+            await db.flush()
+        else:
+            org.status = "APPROVED"
+            org.verification_status = "VERIFIED"
+            org.trade_name = vinfo["trade_name"]
+            org.display_name = vinfo["trade_name"]
+            org.vendor_code = vinfo["vendor_code"]
+            org.primary_phone = vinfo["phone"]
+
+        # Ensure User Accounts for both primary email and alt_email
+        for email_to_use in [vinfo["email"], vinfo.get("alt_email")]:
+            if not email_to_use:
+                continue
+            stmt_user = select(User).options(selectinload(User.roles)).where(User.email == email_to_use)
+            res_user = await db.execute(stmt_user)
+            user = res_user.scalars().first()
+
+            if not user:
+                user = User(
+                    id=str(uuid.uuid4()),
+                    email=email_to_use,
+                    password_hash=get_password_hash("password123"),
+                    full_name=vinfo["name"],
+                    phone=vinfo["phone"],
+                    is_active=True,
+                    is_verified=True,
+                    vendor_organization_id=org.id,
+                    roles=[vendor_role]
+                )
+                db.add(user)
+                await db.flush()
+            else:
+                user.password_hash = get_password_hash("password123")
+                user.is_active = True
+                user.is_verified = True
+                user.vendor_organization_id = org.id
+                user.phone = vinfo["phone"]
+                if vendor_role not in user.roles:
+                    user.roles.append(vendor_role)
+
+        seeded_list.append({
+            "email": vinfo["email"],
+            "company": vinfo["org_name"],
+            "trade_name": vinfo["trade_name"],
+            "password": "password123",
+            "status": "APPROVED"
+        })
+
+    # 3. Ensure Admin Account
+    for admin_email in ["admin@test.com", "admin@srm.com"]:
+        stmt_admin = select(User).options(selectinload(User.roles)).where(User.email == admin_email)
+        res_adm = await db.execute(stmt_admin)
+        adm = res_adm.scalars().first()
+        if not adm:
+            adm = User(
+                id=str(uuid.uuid4()),
+                email=admin_email,
+                password_hash=get_password_hash("password123"),
+                full_name="Procurement Administrator",
+                is_active=True,
+                is_verified=True,
+                vendor_organization_id=None,
+                roles=[admin_role]
+            )
+            db.add(adm)
+        else:
+            adm.password_hash = get_password_hash("password123")
+            adm.is_active = True
+            adm.is_verified = True
+            if admin_role not in adm.roles:
+                adm.roles.append(admin_role)
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": "Successfully seeded 5 approved demo vendor accounts and admin user.",
+        "vendors": seeded_list,
+        "default_password": "password123"
+    }
+
