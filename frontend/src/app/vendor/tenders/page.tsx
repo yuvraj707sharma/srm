@@ -27,6 +27,16 @@ export default function VendorTendersPage() {
   const router = useRouter();
   const [tenders, setTenders] = useState<VendorTender[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"ALL" | "PENDING" | "SUBMITTED">("ALL");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("filter") === "submitted") {
+        setFilter("SUBMITTED");
+      }
+    }
+  }, []);
 
   useEffect(() => {
     loadTenders();
@@ -74,19 +84,28 @@ export default function VendorTendersPage() {
     return `⏳ ${h}h ${m}m ${s}s remaining`;
   };
 
+  const pendingTenders = tenders.filter((t) => t.submission_status !== "SUBMITTED");
+  const submittedTenders = tenders.filter((t) => t.submission_status === "SUBMITTED");
+  const displayTenders =
+    filter === "SUBMITTED"
+      ? submittedTenders
+      : filter === "PENDING"
+      ? pendingTenders
+      : tenders;
+
   return (
-    <div className="space-y-6 text-slate-900 pb-16 font-sans">
+    <div className="space-y-6 text-slate-900 pb-16 font-sans max-w-7xl mx-auto p-4 sm:p-6">
       {/* Header Banner */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Active BOQ Tenders & Invitations</h1>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Active BOQ Tenders &amp; Invitations</h1>
             <span className="bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-blue-200">
               Procurement Portal
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Review invitations from JECRC Medical College & Hospital, submit commercial quotations before the time-lock, or upload Excel/PDF bids.
+            Review invitations from JECRC Medical College &amp; Hospital, submit commercial quotations before the time-lock, or upload signed PDF bids.
           </p>
         </div>
         <div className="flex items-center space-x-3 flex-shrink-0">
@@ -95,9 +114,45 @@ export default function VendorTendersPage() {
             className="inline-flex items-center space-x-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl font-bold text-xs border border-slate-300 transition-all shadow-xs"
           >
             <span>🏠</span>
-            <span>Back to Dashboard</span>
+            <span>Dashboard</span>
           </Link>
         </div>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setFilter("ALL")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            filter === "ALL"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          All Tenders ({tenders.length})
+        </button>
+        <button
+          onClick={() => setFilter("PENDING")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            filter === "PENDING"
+              ? "bg-amber-600 text-white shadow-xs"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <span>⏱️</span>
+          <span>Open for Bidding ({pendingTenders.length})</span>
+        </button>
+        <button
+          onClick={() => setFilter("SUBMITTED")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            filter === "SUBMITTED"
+              ? "bg-emerald-600 text-white shadow-xs"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <span>🔒</span>
+          <span>My Submitted Bids ({submittedTenders.length})</span>
+        </button>
       </div>
 
       {/* Main List */}
@@ -107,25 +162,35 @@ export default function VendorTendersPage() {
             <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             <span className="text-sm font-semibold">Loading Tender Opportunities...</span>
           </div>
-        ) : tenders.length === 0 ? (
+        ) : displayTenders.length === 0 ? (
           <div className="p-16 text-center flex flex-col items-center">
             <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mb-3 text-2xl">
               📂
             </div>
-            <h3 className="text-base font-bold text-slate-800">No Tenders Available Right Now</h3>
+            <h3 className="text-base font-bold text-slate-800">
+              {filter === "SUBMITTED"
+                ? "No Bids Submitted Yet"
+                : filter === "PENDING"
+                ? "No Pending Bids to Submit"
+                : "No Tenders Available Right Now"}
+            </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm">
-              You will automatically receive email invitations when new procurement tenders matching your approved categories are published.
+              {filter === "SUBMITTED"
+                ? "You haven't submitted any quotations yet. Check open tenders to review specifications and submit."
+                : "You will automatically receive invitations when new procurement tenders are published."}
             </p>
-            <Link
-              href="/vendor/dashboard"
-              className="mt-5 inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors"
-            >
-              <span>← Go to Dashboard</span>
-            </Link>
+            {filter !== "ALL" && (
+              <button
+                onClick={() => setFilter("ALL")}
+                className="mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs"
+              >
+                Show All Tenders
+              </button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {tenders.map((tender) => {
+            {displayTenders.map((tender) => {
               const isSubmitted = tender.submission_status === "SUBMITTED";
               const isLocked = tender.is_deadline_passed;
 
@@ -178,7 +243,7 @@ export default function VendorTendersPage() {
                       <div className="text-left sm:text-right">
                         <span className="inline-flex items-center space-x-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold">
                           <span>🔒</span>
-                          <span>Bid Submitted & Locked</span>
+                          <span>Bid Submitted &amp; Locked</span>
                         </span>
                         <div className="text-xs font-mono font-bold text-slate-800 mt-1">
                           Quoted: ₹{(tender.grand_total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}

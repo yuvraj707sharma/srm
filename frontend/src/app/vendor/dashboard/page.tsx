@@ -22,8 +22,8 @@ interface VendorProfile {
 export default function MinimalWhiteVendorDashboardPage() {
   const router = useRouter();
   const [vendor, setVendor] = useState<VendorProfile | null>(null);
-  const [docCount, setDocCount] = useState<number>(0);
-  const [catalogCount, setCatalogCount] = useState<number>(0);
+  const [tenderCount, setTenderCount] = useState<number>(0);
+  const [submittedCount, setSubmittedCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { logout } = useAuth();
@@ -36,24 +36,17 @@ export default function MinimalWhiteVendorDashboardPage() {
         if (profRes.ok) {
           const profData = await profRes.json();
           setVendor(profData);
-          if (profData.status !== "APPROVED") {
-            router.push("/vendor/profile");
-            return;
-          }
         } else {
           setError("Failed to load vendor profile.");
         }
 
-        const docRes = await fetchApi("/api/v1/vendor/documents");
-        if (docRes.ok) {
-          const docData = await docRes.json();
-          setDocCount(docData.length);
-        }
-
-        const catRes = await fetchApi("/api/v1/vendor/catalogs");
-        if (catRes.ok) {
-          const catData = await catRes.json();
-          setCatalogCount(catData.length);
+        const tendersRes = await fetchApi("/api/v1/vendor/tenders");
+        if (tendersRes.ok) {
+          const tenders = await tendersRes.json();
+          const tenderList = Array.isArray(tenders) ? tenders : [];
+          setTenderCount(tenderList.length);
+          const submitted = tenderList.filter((t: any) => t.submission_status === "SUBMITTED").length;
+          setSubmittedCount(submitted);
         }
       } catch (err) {
         setError("An error occurred while loading vendor dashboard.");
@@ -88,36 +81,28 @@ export default function MinimalWhiteVendorDashboardPage() {
                   <span className="font-bold text-gray-900 tracking-tight text-xs sm:text-sm block leading-tight">
                     JECRC Medical College Hospital &amp; Research Centre
                   </span>
-                  <span className="text-[10px] text-gray-500 block font-medium">A Unit of JECRC • Vendor Portal</span>
+                  <span className="text-[10px] text-gray-500 block font-medium">A Unit of JECRC • Vendor Procurement Portal</span>
                 </div>
               </Link>
 
-              <div className="hidden md:flex space-x-1 pl-4 border-l border-gray-200 text-xs font-semibold">
-                {vendor?.status === "APPROVED" && (
-                  <Link href="/vendor/dashboard" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                    Dashboard
-                  </Link>
-                )}
-                <Link href="/vendor/profile" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  {vendor?.status === "APPROVED" ? "My Profile" : "Vendor Registration"}
+              <div className="hidden md:flex space-x-2 pl-4 border-l border-gray-200 text-xs font-semibold">
+                <Link href="/vendor/dashboard" className="bg-blue-50 text-blue-700 px-3.5 py-2 rounded-lg font-bold">
+                  Dashboard
                 </Link>
-                {vendor?.status === "APPROVED" && (
-                  <>
-                    <Link href="/vendor/tenders" className="text-blue-600 font-bold hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors flex items-center space-x-1">
-                      <span>⏱️</span>
-                      <span>Active Tenders &amp; BOQs</span>
-                    </Link>
-                    <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      My Proposals
-                    </Link>
-                    <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      Documents
-                    </Link>
-                    <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      Product Catalogs (AI)
-                    </Link>
-                  </>
-                )}
+                <Link
+                  href="/vendor/tenders"
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center space-x-1.5 shadow-xs"
+                >
+                  <span>⏱️</span>
+                  <span>Active Tenders &amp; BOQs</span>
+                </Link>
+                <Link
+                  href="/vendor/tenders?filter=submitted"
+                  className="text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-3.5 py-2 rounded-lg transition-colors flex items-center space-x-1"
+                >
+                  <span>📋</span>
+                  <span>My Submitted Proposals</span>
+                </Link>
               </div>
             </div>
 
@@ -135,7 +120,6 @@ export default function MinimalWhiteVendorDashboardPage() {
 
       {/* Main Container */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
-        
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center space-x-2">
             <span>⚠️</span>
@@ -145,7 +129,6 @@ export default function MinimalWhiteVendorDashboardPage() {
 
         {vendor ? (
           <div className="space-y-6">
-            
             {/* Vendor Profile Header Card */}
             <div className="bg-white border border-gray-200 rounded-xl p-6 md:p-8 shadow-sm">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -155,227 +138,138 @@ export default function MinimalWhiteVendorDashboardPage() {
                   </div>
                   <p className="text-sm text-gray-500 mt-1">
                     {vendor.trade_name ? `${vendor.trade_name} • ` : ""}
-                    {vendor.organization_type || "Vendor Organization"}
+                    {vendor.organization_type || "Registered Vendor Partner"}
                     {vendor.city ? ` • ${vendor.city}` : ""}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className={`px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    vendor.status === "APPROVED" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
-                    vendor.status === "REJECTED" ? "bg-red-100 text-red-800 border border-red-200" :
-                    "bg-amber-100 text-amber-800 border border-amber-200"
-                  }`}>
+                  <span
+                    className={`px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                      vendor.status === "APPROVED"
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                        : vendor.status === "REJECTED"
+                        ? "bg-red-100 text-red-800 border border-red-200"
+                        : "bg-amber-100 text-amber-800 border border-amber-200"
+                    }`}
+                  >
                     Status: {vendor.status}
                   </span>
-                  <span className={`px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    vendor.verification_status === "VERIFIED" ? "bg-blue-100 text-blue-800 border border-blue-200" : "bg-gray-100 text-gray-700 border border-gray-200"
-                  }`}>
+                  <span
+                    className={`px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                      vendor.verification_status === "VERIFIED"
+                        ? "bg-blue-100 text-blue-800 border border-blue-200"
+                        : "bg-gray-100 text-gray-700 border border-gray-200"
+                    }`}
+                  >
                     {vendor.verification_status}
                   </span>
                 </div>
               </div>
 
-              {/* Status Banner for Unapproved Vendors */}
-              {vendor.status !== "APPROVED" && (
-                <div className="mt-6 pt-6 border-t border-gray-100">
-                  {vendor.status === "DRAFT" ? (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-blue-900">
-                      <div className="flex items-start space-x-3">
-                        <span className="text-xl">📝</span>
-                        <div>
-                          <h4 className="font-bold text-sm">Onboarding in Progress (Draft)</h4>
-                          <p className="text-xs text-blue-700 mt-0.5">Please complete your Master Profile and submit for verification. Tenders and bidding will be enabled upon administrative approval.</p>
-                        </div>
-                      </div>
-                      <Link href="/vendor/profile" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg whitespace-nowrap self-start sm:self-auto shadow-xs">
-                        Complete Profile →
-                      </Link>
-                    </div>
-                  ) : vendor.status === "REJECTED" ? (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start space-x-3 text-red-900">
-                      <span className="text-xl">⚠️</span>
-                      <div>
-                        <h4 className="font-bold text-sm">Profile Revision Required</h4>
-                        <p className="text-xs text-red-800 mt-0.5">Your profile submission requires revisions or document corrections. Please review your profile sections and resubmit.</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start space-x-3 text-amber-900">
-                      <span className="text-xl">⏳</span>
-                      <div>
-                        <h4 className="font-bold text-sm">Registration Under Administrative Review</h4>
-                        <p className="text-xs text-amber-800 mt-0.5">Your organization profile has been submitted and is currently being reviewed by the JECRC Procurement Committee. You will receive access to active tenders and RFQs once approved.</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Quick Action Redirect Buttons */}
+              {/* Primary Quick Action Buttons (NO Master Profile) */}
               <div className="mt-6 pt-6 border-t border-gray-100 flex flex-wrap gap-3">
                 <Link
-                  href="/vendor/profile"
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center space-x-2"
+                  href="/vendor/tenders"
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs shadow-sm transition-all flex items-center space-x-2"
                 >
-                  <span>👤</span>
-                  <span>Master Profile</span>
+                  <span>⏱️</span>
+                  <span>Active BOQ Tenders &amp; Bid Lock</span>
                 </Link>
-                
-                {vendor.status === "APPROVED" ? (
-                  <Link
-                    href="/vendor/tenders"
-                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs shadow-sm transition-all flex items-center space-x-2"
-                  >
-                    <span>⏱️</span>
-                    <span>Active BOQ Tenders & Bid Lock</span>
-                  </Link>
-                ) : (
-                  <span
-                    className="px-4 py-2.5 bg-gray-100 text-gray-400 font-semibold rounded-lg text-xs border border-gray-200 flex items-center space-x-2 cursor-not-allowed"
-                    title="Tender bidding is unlocked after admin approval"
-                  >
-                    <span>🔒</span>
-                    <span>Active Tenders (Unlocks on Approval)</span>
-                  </span>
-                )}
 
                 <Link
-                  href="/vendor/recommendations"
-                  className="px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-800 font-semibold rounded-lg text-xs border border-gray-300 transition-all flex items-center space-x-2"
+                  href="/vendor/tenders?filter=submitted"
+                  className="px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-800 font-semibold rounded-lg text-xs border border-gray-300 transition-all flex items-center space-x-2"
                 >
                   <span>📋</span>
-                  <span>My Proposals</span>
+                  <span>My Submitted Proposals ({submittedCount})</span>
                 </Link>
               </div>
             </div>
 
             {/* Metrics Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Master Profile</span>
-                <div className="text-2xl font-bold text-gray-900">Active Profile</div>
-                <Link href="/vendor/profile" className="text-xs text-blue-600 hover:underline font-semibold block pt-1">
-                  Manage Profile & Docs →
-                </Link>
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Tender Bidding</span>
                 <div className="text-2xl font-bold text-gray-900">
-                  {vendor.status === "APPROVED" ? "Active BOQs" : "Locked 🔒"}
+                  {tenderCount} Active BOQs
                 </div>
-                {vendor.status === "APPROVED" ? (
-                  <Link href="/vendor/tenders" className="text-xs text-amber-700 hover:underline font-bold block pt-1">
-                    Submit Bids (Time Lock) →
-                  </Link>
-                ) : (
-                  <span className="text-xs text-gray-400 block pt-1">
-                    Enabled after verification
-                  </span>
-                )}
-              </div>
-
-              <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Documents</span>
-                <div className="text-2xl font-bold text-gray-900">{docCount} Files</div>
-                <Link href="/vendor/documents" className="text-xs text-blue-600 hover:underline font-semibold block pt-1">
-                  View Compliance Docs →
+                <Link href="/vendor/tenders" className="text-xs text-amber-700 hover:underline font-bold block pt-1">
+                  View &amp; Submit Bids →
                 </Link>
               </div>
 
               <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Extracted Catalogs</span>
-                <div className="text-2xl font-bold text-gray-900">{catalogCount} Catalogs</div>
-                <Link href="/vendor/catalogs" className="text-xs text-blue-600 hover:underline font-semibold block pt-1">
-                  View Product Extractions →
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">My Submissions</span>
+                <div className="text-2xl font-bold text-gray-900">{submittedCount} Submitted</div>
+                <Link href="/vendor/tenders?filter=submitted" className="text-xs text-blue-600 hover:underline font-semibold block pt-1">
+                  View Sealed Bids →
                 </Link>
+              </div>
+
+              <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-2 shadow-sm">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Vendor Eligibility</span>
+                <div className="text-2xl font-bold text-emerald-700">Verified &amp; Approved</div>
+                <span className="text-xs text-gray-500 block pt-1">
+                  Eligible for Institutional Supply &amp; BOQ Contracts
+                </span>
               </div>
             </div>
 
             {/* Quick Navigation Cards */}
             <div className="space-y-4 pt-2">
-              <h2 className="text-base font-bold text-gray-900">Vendor Portal Navigation</h2>
+              <h2 className="text-base font-bold text-gray-900">Vendor Portal Quick Access</h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {/* Card 1 */}
                 <Link
-                  href="/vendor/profile"
-                  className="bg-white border border-gray-200 hover:border-blue-500 p-6 rounded-xl transition-all group space-y-3 shadow-sm hover:shadow-md"
+                  href="/vendor/tenders"
+                  className="bg-white border border-gray-200 hover:border-amber-500 p-6 rounded-xl transition-all group space-y-3 shadow-sm hover:shadow-md"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
-                    👤
+                  <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
+                    ⏱️
                   </div>
-                  <h3 className="text-base font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    1. Vendor Master Profile
+                  <h3 className="text-base font-bold text-gray-900 group-hover:text-amber-600 transition-colors">
+                    1. Active BOQ Tenders &amp; Bid Submission
                   </h3>
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    Complete your organization profile: Identification, Address & Contact, Head of Org, Bank Details, Classification, Pre-Qualification, and Documents.
+                    Inspect hospital BOQ itemized specifications, review clinical/technical requirements verbatim, and submit commercial quotations via Raw Text or Signed PDF before the bid time-lock.
                   </p>
-                  <span className="text-xs text-blue-600 font-bold block pt-1">
-                    Open Profile Form →
+                  <span className="text-xs text-amber-600 font-bold block pt-1">
+                    Open Active Tenders →
                   </span>
                 </Link>
 
                 {/* Card 2 */}
                 <Link
-                  href="/vendor/search"
-                  className="bg-white border border-gray-200 hover:border-blue-500 p-6 rounded-xl transition-all group space-y-3 shadow-sm hover:shadow-md"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
-                    🎯
-                  </div>
-                  <h3 className="text-base font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    2. BOQ Submission Portal
-                  </h3>
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    Search active institutional BOQs, inspect itemized requirements, and submit competitive tender proposals for institutional procurement.
-                  </p>
-                  <span className="text-xs text-blue-600 font-bold block pt-1">
-                    Go to BOQ Submissions →
-                  </span>
-                </Link>
-
-                {/* Card 3 */}
-                <Link
-                  href="/vendor/recommendations"
+                  href="/vendor/tenders?filter=submitted"
                   className="bg-white border border-gray-200 hover:border-blue-500 p-6 rounded-xl transition-all group space-y-3 shadow-sm hover:shadow-md"
                 >
                   <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
                     📋
                   </div>
                   <h3 className="text-base font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    3. My Proposals & Bids
+                    2. My Submitted Proposals &amp; Bids
                   </h3>
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    Review submitted proposals, view recommendation match scores, track tender evaluation status, and monitor awarded supply contracts.
+                    Review your submitted quotation amounts, unit prices, sealed time-locks, and track procurement evaluation and award decisions.
                   </p>
                   <span className="text-xs text-blue-600 font-bold block pt-1">
                     View My Proposals →
                   </span>
                 </Link>
-
               </div>
             </div>
-
           </div>
         ) : (
           <div className="bg-white border border-gray-200 rounded-xl p-8 text-center space-y-4 max-w-md mx-auto shadow-sm">
             <div className="text-4xl">🏢</div>
-            <h2 className="text-lg font-bold text-gray-900">No Vendor Profile Found</h2>
+            <h2 className="text-lg font-bold text-gray-900">Loading Vendor Information...</h2>
             <p className="text-xs text-gray-500">
-              Your account is not associated with a registered vendor organization yet.
+              Please wait while your verified vendor credentials are verified.
             </p>
-            <Link
-              href="/vendor/profile"
-              className="inline-block px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all"
-            >
-              Register & Complete Profile
-            </Link>
           </div>
         )}
-
       </div>
     </div>
   );

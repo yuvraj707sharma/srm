@@ -128,31 +128,24 @@ export default function MinimalWhiteVendorDocumentsPage() {
                 </div>
               </Link>
 
-              <div className="hidden md:flex space-x-1 pl-4 border-l border-gray-200 text-xs font-semibold">
-                {profile?.status === "APPROVED" && (
-                  <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                    Dashboard
-                  </Link>
-                )}
-                <Link href="/vendor/profile" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                  {profile?.status === "APPROVED" ? "My Profile" : "Vendor Registration"}
+              <div className="hidden md:flex space-x-2 pl-4 border-l border-gray-200 text-xs font-semibold">
+                <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3.5 py-2 rounded-lg transition-colors">
+                  Dashboard
                 </Link>
-                {profile?.status === "APPROVED" && (
-                  <>
-                    <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      BOQ Submissions
-                    </Link>
-                    <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      My Proposals
-                    </Link>
-                    <Link href="/vendor/documents" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                      Documents
-                    </Link>
-                    <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      Product Catalogs (AI)
-                    </Link>
-                  </>
-                )}
+                <Link
+                  href="/vendor/tenders"
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center space-x-1.5 shadow-xs"
+                >
+                  <span>⏱️</span>
+                  <span>Active Tenders &amp; BOQs</span>
+                </Link>
+                <Link
+                  href="/vendor/tenders?filter=submitted"
+                  className="text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-3.5 py-2 rounded-lg transition-colors flex items-center space-x-1"
+                >
+                  <span>📋</span>
+                  <span>My Submitted Proposals</span>
+                </Link>
               </div>
             </div>
 

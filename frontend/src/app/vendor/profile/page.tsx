@@ -715,31 +715,24 @@ export default function CompleteWhiteVendorProfilePage() {
                 </div>
               </Link>
 
-              <div className="hidden md:flex space-x-1 pl-4 border-l border-gray-200 text-xs font-semibold">
-                {profile?.status === "APPROVED" && (
-                  <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                    Dashboard
-                  </Link>
-                )}
-                <Link href="/vendor/profile" className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold">
-                  {profile?.status === "APPROVED" ? "My Profile" : "Vendor Registration"}
+              <div className="hidden md:flex space-x-2 pl-4 border-l border-gray-200 text-xs font-semibold">
+                <Link href="/vendor/dashboard" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3.5 py-2 rounded-lg transition-colors">
+                  Dashboard
                 </Link>
-                {profile?.status === "APPROVED" && (
-                  <>
-                    <Link href="/vendor/search" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      BOQ Submissions
-                    </Link>
-                    <Link href="/vendor/recommendations" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      My Proposals
-                    </Link>
-                    <Link href="/vendor/documents" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      Documents
-                    </Link>
-                    <Link href="/vendor/catalogs" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors">
-                      Product Catalogs (AI)
-                    </Link>
-                  </>
-                )}
+                <Link
+                  href="/vendor/tenders"
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center space-x-1.5 shadow-xs"
+                >
+                  <span>⏱️</span>
+                  <span>Active Tenders &amp; BOQs</span>
+                </Link>
+                <Link
+                  href="/vendor/tenders?filter=submitted"
+                  className="text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-3.5 py-2 rounded-lg transition-colors flex items-center space-x-1"
+                >
+                  <span>📋</span>
+                  <span>My Submitted Proposals</span>
+                </Link>
               </div>
             </div>
 
@@ -874,6 +867,27 @@ export default function CompleteWhiteVendorProfilePage() {
               <span className="bg-amber-200 text-amber-900 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider shrink-0">
                 {profile?.status}
               </span>
+            </div>
+          )}
+
+          {profile?.status === "APPROVED" && (
+            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm text-emerald-900">
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl">✓</span>
+                <div>
+                  <h3 className="font-bold text-sm">Vendor Profile is Verified &amp; Approved</h3>
+                  <p className="text-xs text-emerald-800 mt-0.5">
+                    Your profile is completely verified. You have full access to view published BOQs and submit tender bids.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/vendor/tenders"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg shadow-xs flex items-center space-x-1.5 whitespace-nowrap self-start sm:self-auto"
+              >
+                <span>⏱️</span>
+                <span>Go to Active BOQ Tenders &rarr;</span>
+              </Link>
             </div>
           )}
 
